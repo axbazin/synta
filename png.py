@@ -51,7 +51,6 @@ class gene:
             j+=60
         return seq
             
-
 def reverse_complement(seq): 
     complement = {'A': 'T', 'C': 'G', 'G': 'C', 'T': 'A', 'N':'N' }
     rcseq = ""
@@ -209,7 +208,7 @@ def launch_prodigal(fnaFile):
                             strand = lineData[3],
                             geneType="CDS",
                             inference = "ab initio prediction:Prodigal"))
-    logging.getLogger().info(f"Done with Prodigal. There are {len(geneObjs)} CDSs.")
+    logging.getLogger().info(f"Done with Prodigal(CDS). There are {len(geneObjs)} CDSs.")
     return geneObjs
 
 def launch_infernal(fnaFile):
@@ -217,8 +216,12 @@ def launch_infernal(fnaFile):
     tmpFile = tempfile.NamedTemporaryFile(mode="r")
     cmd = ["cmscan","--tblout",tmpFile.name,"--hmmonly","--cpu",str(1),"--noali",f"{os.path.dirname(os.path.realpath(__file__))}/cmDB/rRNA_bact.cm",fnaFile]
     p = Popen(cmd, stdout=open(os.devnull,"w"), stderr = PIPE)
-    err = p.communicate()[1].decode()
-    print(err.split())
+    err = p.communicate()[1].decode().split()
+    if err != []:
+        if err[0] == 'Error:':
+            raise Exception(f"Infernal (cmscan) failed with error : '{ ' '.join(err) }'. If you never used this script, you should press the .cm file using cmpress executable from Infernal. You should find the file in '{os.path.dirname(os.path.realpath(__file__))}/cmDB/'.")
+        raise Exception(f"An error occurred with Infernal. Error is : '{ ' '.join(err) }'.")
+    ### never managed to test what happens if the .cm files are compressed with a 'bad' version of infernal, so if that happens you are on your own.
 
     basename = ''.join(os.path.basename(fnaFile).split(".")[:-1]) ## getting the file basename without the (expected) extention.
 
