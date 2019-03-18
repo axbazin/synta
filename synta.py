@@ -29,6 +29,15 @@ class gene:
         self.inference = inference
         self.product = product
 
+        self.dbxref = None
+        self.locus_tag = None
+        self.protein_id = None
+
+    def saveDBinfo(self, dbxref, locus, protein_id):
+        self.dbxref = dbxref
+        self.locus_tag = locus
+        self.protein_id = protein_id
+
     def get_gff(self, version_numbers):
         """
             Takes the software's version numbers used for different types of genes (key:  gene type, value:  tuple with version string andsoftware name). Writes the gene's information in gff3 format
@@ -37,6 +46,14 @@ class gene:
 
         Feature = f"{self.contig}\t{soft}: {version}\tgene\t{self.start}\t{self.stop}\t1\t{self.strand}\t0\tID=gene_{self.ID}\n"
         Feature += f'{self.contig}\t{soft}: {version}\t{self.type}\t{self.start}\t{self.stop}\t1\t{self.strand}\t0\tID={self.ID};Parent=gene_{self.ID};inference={self.inference}'
+        
+        if self.dbxref is not None:
+            Feature += f";db_ref={ ','.join(self.dbxref)}"
+        if self.locus_tag is not None:
+            Feature += f";locus_tag={self.locus_tag}"
+        if self.protein_id is not None:
+            Feature += f";protein_id={self.protein_id}"
+        
         Feature += f";product={self.product}\n" if self.product else "\n"
         return Feature
 
@@ -338,6 +355,30 @@ def write_output(outputbasename, contigs, genes, compress, format, cpu, versions
             elif forms == "faa":
                 wfaa.get()
 
+def read_fasta(fnaFile):
+    """
+        Reads a fna file and stores it in a dictionnary with contigs as key and sequence as value.
+    """
+    logging.getLogger().debug("Reading fasta file and extracting sequence and contig names.")
+    contigs = {}
+    contig_name = ""
+    contig_seq = ""
+    for line in fnaFile:
+        if line.startswith('>'):
+            if contig_name != "" and contig_seq != "":
+                contigs[contig_name] = contig_seq
+            contig_seq = ""
+            contig_name = line.split()[0][1:]
+        else:
+            contig_seq += line.strip()
+
+    # processing the last contig
+    if contig_name != "" and contig_seq != "":
+        contigs[contig_name] = contig_seq
+    logging.getLogger().debug(
+        f"Done reading fasta. There are {len(contigs)} sequences.")
+    return contigs
+
 
 def write_gff(output, contigs, genes, compress, versions):
     """
@@ -432,45 +473,16 @@ def write_tmp_fasta(contigs):
     return tmpFile
 
 
-def read_fasta(fnaFile):
-    """
-        Reads a fna file and stores it in a dictionnary with contigs as key and sequence as value.
-    """
-    logging.getLogger().debug("Reading fasta file and extracting sequence and contig names.")
-    contigs = {}
-    contig_name = ""
-    contig_seq = ""
-    for line in fnaFile:
-        if line.startswith('>'):
-            if contig_name != "" and contig_seq != "":
-                contigs[contig_name] = contig_seq
-            contig_seq = ""
-            contig_name = line.split()[0][1:]
-        else:
-            contig_seq += line.strip()
 
-    # processing the last contig
-    if contig_name != "" and contig_seq != "":
-        contigs[contig_name] = contig_seq
-    logging.getLogger().debug(
-        f"Done reading fasta. There are {len(contigs)} sequences.")
-    return contigs
-
-
-def syntaxic_annotation(fna, cpu, norna, locustag):
+def syntaxic_annotation(fastaFile, cpu, norna, locustag):
     """
         Runs the different softwares for the syntaxic annotation.
 
-        Takes in the fna file name to annotate (can be compressed)
+        Takes in the file-like object containing the uncompressed fasta sequences to annotate
         the number of cpus that we can use.
         whether to annotate rna or not
         the locustag to give gene IDs.
     """
-    # pre-processings
-    fastaFile = read_compressed_or_not(fna)
-    contigs = read_fasta(fastaFile)
-    if is_compressed(fna):
-        fastaFile = write_tmp_fasta(contigs)
     # launching tools for syntaxic annotation
     genes = []
     logging.getLogger().info(f"Launching syntaxic annotation.")
@@ -495,7 +507,7 @@ def syntaxic_annotation(fna, cpu, norna, locustag):
         logging.getLogger().debug("Got the results from the process for Prodigal")
 
     fastaFile.close()  # closing either tmp file or original fasta file.
-    return genes, contigs
+    return genes
 
 
 def overlap_filter(genes, contigs):
@@ -520,17 +532,17 @@ def overlap_filter(genes, contigs):
     return tmpGenes
 
 
-def mk_basename(output, fna):
+def mk_basename(output, afile):
     """
         Extracts the basename from a file. (name with the extension(s)))
     """
     outbasename = output
     if output[-1] != "/":
         outbasename += "/"
-    if is_compressed(fna):
-        outbasename += "".join(os.path.basename(fna).split(".")[: -2])
+    if is_compressed(afile):
+        outbasename += "".join(os.path.basename(afile).split(".")[: -2])
     else:
-        outbasename += "".join(os.path.basename(fna).split(".")[: -1])
+        outbasename += "".join(os.path.basename(afile).split(".")[: -1])
     return outbasename
 
 
@@ -577,13 +589,153 @@ def check_versions():
     return {'CDS': ('.'.join(proVersion), "Prodigal"), 'tRNA': ('.'.join(araVersion), "ARAGORN"), 'rRNA': ('.'.join(infVersion), "INFERNAL")}
 
 
+def read_gbff(gbff):
+    geneObjs = []
+    contigs = {}
+    frameshifts = 0
+    logging.getLogger().debug("Extracting genes informations from the given gbff")
+    with open(gbff,"r") as gbffFile:
+        lines = gbffFile.readlines()[::-1]## revert the order of the file, to read the first line first.
+        while len(lines) != 0:
+            line = lines.pop()
+
+            if line.startswith('LOCUS'):## beginning of contig.## if multicontig, should happen right after '//'.
+                while not line.startswith('FEATURES'):
+                    if line.startswith('VERSION'):
+                        contigID = line[12:].strip()
+                    line = lines.pop()
+            ## start of the feature object.
+            dbxref = set()
+            protein_id = ""
+            locus_tag = ""
+            usefulInfo = False
+            line = lines.pop() ##
+            while not line.startswith("CONTIG"):
+                currType = line[5:21].strip()
+                if currType != "":
+                    if usefulInfo:##anything needs a locus tag (in the format description)
+                        newGene = gene(protein_id, contigID, start, end, strand, objType)
+                        newGene.saveDBinfo(dbxref, locus_tag, protein_id)
+                        geneObjs.append(newGene)
+                    usefulInfo = True
+                    objType = currType
+                    if objType in ['tRNA','CDS','rRNA']:
+                        dbxref = set()
+                        protein_id = ""
+                        locus_tag = "" 
+                        try:
+                            if line[21:].startswith('complement('):
+                                strand = "-"
+                                start, end = line[32:].replace(')','').split("..")
+                            else:
+                                strand = "+"
+                                start, end = line[21:].strip().split('..')
+                        except ValueError:
+                            # print('Frameshift')
+                            frameshifts+=1
+                            pass ## don't know what to do with that.
+                            ## there is a protein with a frameshift mecanism.
+                    else:
+                        usefulInfo = False
+                elif usefulInfo:## current info goes to current objtype, if it's useful.
+                    if line[21:].startswith("/db_xref"):
+                        dbxref.add(line.split("=")[1].replace('"',''))
+                    elif line[21:].startswith('/locus_tag'):
+                        locus_tag = line.split("=")[1].replace('"','')
+                    elif line[21:].startswith('/protein_id'):
+                        protein_id = line.split('=')[1].replace('"','')
+                line = lines.pop()
+            ## end of contig.
+            line = lines.pop()##ORIGIN line.
+            line = lines.pop()##first sequence line.
+            ## if the seq was to be gotten, it would be here.
+            sequence = ""
+            while not line.startswith('//'):
+                sequence += line[10:].replace(" ","").strip()
+                line = lines.pop()
+            ##ended the contig/sequence.
+            contigs[contigID] = sequence
+            
+    logging.getLogger().debug("Done extracting informations from the gbff")
+    logging.getLogger().debug(f"There was {frameshifts} elements with multiple frames.")
+    return geneObjs, contigs
+
+
+def compare_to_gbff(contigs, genes, gbffObjs):
+    
+
+    gbffObjs = sorted(gbffObjs, key = lambda x : ( -len(contigs[x.contig]), x.start) )## sort the same way that 'genes'
+    
+    gbffIndex = 0
+    geneIndex = 0
+
+    precContig = ""
+    nomatchGbff = 0
+    nomatchGenes = 0
+    matchEnd = 0
+    matchStart = 0
+    matchStartNoStop = 0
+    perfect = 0
+    while gbffIndex < len(gbffObjs) and geneIndex < len(genes):
+
+        if gbffObjs[gbffIndex].contig == genes[geneIndex].contig:## then we can compare
+            precContig = genes[geneIndex].contig                    
+           
+            if gbffObjs[gbffIndex].stop == genes[geneIndex].stop:## start is different but stop is equal.
+                ## if stop is equal, we consider the protein being the same !
+                genes[geneIndex].saveDBinfo(dbxref = gbffObjs[gbffIndex].dbxref, locus = gbffObjs[gbffIndex].locus_tag, protein_id = gbffObjs[gbffIndex].protein_id)
+                matchEnd += 1
+                geneIndex+=1
+                gbffIndex+=1
+                if gbffObjs[gbffIndex].start == genes[geneIndex].start:
+                    
+                    matchStart += 1
+                    perfect += 1
+
+            elif genes[geneIndex].start < gbffObjs[gbffIndex].start:
+                nomatchGenes +=1
+                geneIndex+=1
+            
+            elif gbffObjs[gbffIndex].start < genes[geneIndex].start:
+                nomatchGbff+=1
+                gbffIndex+=1
+
+            elif gbffObjs[gbffIndex].start == genes[geneIndex].start:## weird case
+                matchStartNoStop+1
+                if gbffObjs[gbffIndex].stop < genes[geneIndex].stop:
+                    gbffIndex+=1
+                else:
+                    geneIndex +=1
+
+        else:
+            if genes[geneIndex].contig != precContig:
+                nomatchGenes+=1
+                geneIndex +=1
+            elif gbffObjs[gbffIndex].contig != precContig:
+                nomatchGbff+=1
+                gbffIndex +=1
+    
+    if gbffIndex < len(gbffObjs) - 1:
+        nomatchGbff += len(gbffObjs)-1 - gbffIndex
+
+    if geneIndex < len(genes) - 1:
+        nomatchGenes += len(genes)-1 - geneIndex 
+
+    print(f"perfect : {perfect}, end match : {matchEnd}, start match : {matchStart}, noGeneMatch : {nomatchGenes}, no gbff match : {nomatchGbff}")
+    if matchStartNoStop > 0:
+        print(f"start but no stop : {matchStartNoStop}")
+
+
 def cmdLine():
     """
         Functions that defines the command line arguments.
     """
     parser = argparse.ArgumentParser()
-    parser.add_argument('--fna',  required=True, type=str,
-                        help="fasta(.gz) file to annotate.")
+    parser.add_argument('--fna',  required=False, type=str,
+                        help="fasta(.gz) file to annotate. Will be used if given.")
+    parser.add_argument('--gbff', required = False, type=str,
+                        help = ".gbff (or .gbk) file to annotate."
+                        " sequence will be used if no fna files are given.")
     parser.add_argument('--overlap', required=False, action='store_false',
                         default=True, help="Use to not remove genes overlapping with RNA features.")
     parser.add_argument('--compress', required=False, action='store_true',
@@ -602,11 +754,16 @@ def cmdLine():
                         help="Different formats that you want as output, separated by a ','. Accepted strings are:  faa fna gff ffn.")
     parser.add_argument("--verbose", required=False, action="store_true",
                         default=False, help="Use to see the DEBUG log, which outputs uppon")
+    parser.add_argument("--compare",required = False,action = "store_true",
+                        default = False, help = "Use to link database references from the gbff to our annotations.")
     args = parser.parse_args()
 
+    if args.fna is None and args.gbff is None:## if any of them is not none, it's good.
+        raise Exception("You must provide at least a fna (with --fna) or a gbff (with --gbff) file to annotate from.")
     if args.locustag is None:
         args.locustag = ''.join(choice(ascii_uppercase) for i in range(12))
-
+    if args.compare and args.gbff is None:
+        raise Exception("You asked to link database references from a given gbff but did not give any gbff.")
     return args
 
 
@@ -622,8 +779,28 @@ def main():
 
     version_numbers = check_versions()
 
-    genes, contigs = syntaxic_annotation(
-        args.fna, args.cpu, args.norna, args.locustag)
+    if args.compare and args.fna is None:
+        logging.getLogger().info("Reading the dna sequences and the gene informations from the gbff file.")
+        gbffObjs, contigs = read_gbff(args.gbff)
+        fastaFile = write_tmp_fasta(contigs)
+    elif args.compare:## args.fna is not none
+        logging.getLogger().info("Reading the gene informations from the gbff file.")
+        gbffObjs, _ = read_gbff(args.gbff)
+    elif args.fna is None:## there will be no comparisons.
+        logging.getLogger().info("Reading the dna sequences from the gbff file.")
+        _, contigs = read_gbff(args.gbff)
+        fastaFile = write_tmp_fasta(contigs)
+
+    if args.fna:
+        logging.getLogger().info("Reading the dna sequences from the fna file.")
+        fastaFile = read_compressed_or_not(args.fna)
+        contigs = read_fasta(fastaFile)
+        if is_compressed(args.fna):
+            fastaFile = write_tmp_fasta(contigs)
+        
+
+    genes = syntaxic_annotation(
+        fastaFile, args.cpu, args.norna, args.locustag)
     if args.overlap and not args.norna:
         # sorting and removing CDS that overlap.
         genes = overlap_filter(genes, contigs)
@@ -633,14 +810,25 @@ def main():
             genes, key=lambda x:  (-len(contigs[x.contig]), x.start))
 
     logging.getLogger().info("Writting output files...")
-    outbasename = mk_basename(args.output, args.fna) if not args.basename else os.path.abspath(
+    if args.basename:
+        outbasename = os.path.abspath(
         args.output + "/" + args.basename)
+    elif args.fna:
+        outbasename = mk_basename(args.output, args.fna)
+    else:
+        outbasename = mk_basename(args.output, args.gbff)
 
     if not os.path.exists(args.output):
         os.makedirs(args.output)
 
+    if args.compare:
+        logging.getLogger().info("Adding databases informations to our annotations from the gbff file...")
+        compare_to_gbff(contigs, genes, gbffObjs)
+
     write_output(outbasename, contigs, genes, args.compress,
                  args.format, args.cpu, version_numbers)
+
+    
 
     logging.getLogger().info(
         f"There is a total of {len(genes)} annotated features.")
