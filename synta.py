@@ -29,15 +29,6 @@ class gene:
         self.inference = inference
         self.product = product
 
-        self.dbxref = None
-        self.locus_tag = None
-        self.protein_id = None
-
-    def saveDBinfo(self, dbxref, locus, protein_id):
-        self.dbxref = dbxref
-        self.locus_tag = locus
-        self.protein_id = protein_id
-
     def get_gff(self, version_numbers):
         """
             Takes the software's version numbers used for different types of genes (key:  gene type, value:  tuple with version string andsoftware name). Writes the gene's information in gff3 format
@@ -46,14 +37,6 @@ class gene:
 
         Feature = f"{self.contig}\t{soft}: {version}\tgene\t{self.start}\t{self.stop}\t1\t{self.strand}\t0\tID=gene_{self.ID}\n"
         Feature += f'{self.contig}\t{soft}: {version}\t{self.type}\t{self.start}\t{self.stop}\t1\t{self.strand}\t0\tID={self.ID};Parent=gene_{self.ID};inference={self.inference}'
-
-        if self.dbxref is not None:
-            Feature += f";db_ref={ ','.join(self.dbxref)}"
-        if self.locus_tag is not None:
-            Feature += f";locus_tag={self.locus_tag}"
-        if self.protein_id is not None:
-            Feature += f";protein_id={self.protein_id}"
-
         Feature += f";product={self.product}\n" if self.product else "\n"
         return Feature
 
@@ -647,8 +630,6 @@ def cmdLine():
                         help="Different formats that you want as output, separated by a ','. Accepted strings are:  faa fna gff ffn.")
     parser.add_argument("--verbose", required=False, action="store_true",
                         default=False, help="Use to see the DEBUG log, which outputs uppon")
-    parser.add_argument("--compare", required=False, action="store_true",
-                        default=False, help="Use to link database references from the gbff to our annotations.")
     args = parser.parse_args()
 
     # if any of them is not none, it's good.
@@ -657,9 +638,7 @@ def cmdLine():
             "You must provide at least a fna (with --fna) or a gbff (with --gbff) file to annotate from.")
     if args.locustag is None:
         args.locustag = ''.join(choice(ascii_uppercase) for i in range(12))
-    if args.compare and args.gbff is None:
-        raise Exception(
-            "You asked to link database references from a given gbff but did not give any gbff.")
+
     return args
 
 
