@@ -166,7 +166,7 @@ def read_compressed_or_not(file_or_file_path):
             return(file)
     if file.read(2).startswith(b'\x1f\x8b'):
         file.seek(0)
-        logging.getLogger().info("Uncompressing the file: '" + file.name + "' ...")
+        logging.getLogger().info("Reading the compressed file: '" + file.name + "' ...")
         return(TextIOWrapper(gzip.open(filename=file, mode="r")))
     else:
         file.close()
