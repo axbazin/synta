@@ -46,14 +46,14 @@ class gene:
 
         Feature = f"{self.contig}\t{soft}: {version}\tgene\t{self.start}\t{self.stop}\t1\t{self.strand}\t0\tID=gene_{self.ID}\n"
         Feature += f'{self.contig}\t{soft}: {version}\t{self.type}\t{self.start}\t{self.stop}\t1\t{self.strand}\t0\tID={self.ID};Parent=gene_{self.ID};inference={self.inference}'
-        
+
         if self.dbxref is not None:
             Feature += f";db_ref={ ','.join(self.dbxref)}"
         if self.locus_tag is not None:
             Feature += f";locus_tag={self.locus_tag}"
         if self.protein_id is not None:
             Feature += f";protein_id={self.protein_id}"
-        
+
         Feature += f";product={self.product}\n" if self.product else "\n"
         return Feature
 
@@ -355,6 +355,7 @@ def write_output(outputbasename, contigs, genes, compress, format, cpu, versions
             elif forms == "faa":
                 wfaa.get()
 
+
 def read_fasta(fnaFile):
     """
         Reads a fna file and stores it in a dictionnary with contigs as key and sequence as value.
@@ -473,7 +474,6 @@ def write_tmp_fasta(contigs):
     return tmpFile
 
 
-
 def syntaxic_annotation(fastaFile, cpu, norna, locustag):
     """
         Runs the different softwares for the syntaxic annotation.
@@ -589,141 +589,34 @@ def check_versions():
     return {'CDS': ('.'.join(proVersion), "Prodigal"), 'tRNA': ('.'.join(araVersion), "ARAGORN"), 'rRNA': ('.'.join(infVersion), "INFERNAL")}
 
 
-def read_gbff(gbff):
-    geneObjs = []
+def read_gbff(gbffFile):
+    """
+        Reads a gbff from a file-like object.
+        returns contigs with IDs as key and sequences as value.
+    """
     contigs = {}
-    frameshifts = 0
-    logging.getLogger().debug("Extracting genes informations from the given gbff")
-    with open(gbff,"r") as gbffFile:
-        lines = gbffFile.readlines()[::-1]## revert the order of the file, to read the first line first.
-        while len(lines) != 0:
+    # revert the order of the file, to read the first line first.
+    lines = gbffFile.readlines()[::-1]
+    while len(lines) != 0:
+        line = lines.pop()
+        # beginning of contig.## if multicontig, should happen right after '//'.
+        if line.startswith('LOCUS'):
+            while not line.startswith('FEATURES'):
+                if line.startswith('VERSION'):
+                    contigID = line[12:].strip()
+                line = lines.pop()
+        # start of the feature object.
+        line = lines.pop()
+        while not line.startswith("ORIGIN"):
             line = lines.pop()
-
-            if line.startswith('LOCUS'):## beginning of contig.## if multicontig, should happen right after '//'.
-                while not line.startswith('FEATURES'):
-                    if line.startswith('VERSION'):
-                        contigID = line[12:].strip()
-                    line = lines.pop()
-            ## start of the feature object.
-            dbxref = set()
-            protein_id = ""
-            locus_tag = ""
-            usefulInfo = False
-            line = lines.pop() ##
-            while not line.startswith("CONTIG"):
-                currType = line[5:21].strip()
-                if currType != "":
-                    if usefulInfo:##anything needs a locus tag (in the format description)
-                        newGene = gene(protein_id, contigID, start, end, strand, objType)
-                        newGene.saveDBinfo(dbxref, locus_tag, protein_id)
-                        geneObjs.append(newGene)
-                    usefulInfo = True
-                    objType = currType
-                    if objType in ['tRNA','CDS','rRNA']:
-                        dbxref = set()
-                        protein_id = ""
-                        locus_tag = "" 
-                        try:
-                            if line[21:].startswith('complement('):
-                                strand = "-"
-                                start, end = line[32:].replace(')','').split("..")
-                            else:
-                                strand = "+"
-                                start, end = line[21:].strip().split('..')
-                        except ValueError:
-                            # print('Frameshift')
-                            frameshifts+=1
-                            pass ## don't know what to do with that.
-                            ## there is a protein with a frameshift mecanism.
-                    else:
-                        usefulInfo = False
-                elif usefulInfo:## current info goes to current objtype, if it's useful.
-                    if line[21:].startswith("/db_xref"):
-                        dbxref.add(line.split("=")[1].replace('"',''))
-                    elif line[21:].startswith('/locus_tag'):
-                        locus_tag = line.split("=")[1].replace('"','')
-                    elif line[21:].startswith('/protein_id'):
-                        protein_id = line.split('=')[1].replace('"','')
-                line = lines.pop()
-            ## end of contig.
-            line = lines.pop()##ORIGIN line.
-            line = lines.pop()##first sequence line.
-            ## if the seq was to be gotten, it would be here.
-            sequence = ""
-            while not line.startswith('//'):
-                sequence += line[10:].replace(" ","").strip()
-                line = lines.pop()
-            ##ended the contig/sequence.
-            contigs[contigID] = sequence
-            
-    logging.getLogger().debug("Done extracting informations from the gbff")
-    logging.getLogger().debug(f"There was {frameshifts} elements with multiple frames.")
-    return geneObjs, contigs
-
-
-def compare_to_gbff(contigs, genes, gbffObjs):
-    
-
-    gbffObjs = sorted(gbffObjs, key = lambda x : ( -len(contigs[x.contig]), x.start) )## sort the same way that 'genes'
-    
-    gbffIndex = 0
-    geneIndex = 0
-
-    precContig = ""
-    nomatchGbff = 0
-    nomatchGenes = 0
-    matchEnd = 0
-    matchStart = 0
-    matchStartNoStop = 0
-    perfect = 0
-    while gbffIndex < len(gbffObjs) and geneIndex < len(genes):
-
-        if gbffObjs[gbffIndex].contig == genes[geneIndex].contig:## then we can compare
-            precContig = genes[geneIndex].contig                    
-           
-            if gbffObjs[gbffIndex].stop == genes[geneIndex].stop:## start is different but stop is equal.
-                ## if stop is equal, we consider the protein being the same !
-                genes[geneIndex].saveDBinfo(dbxref = gbffObjs[gbffIndex].dbxref, locus = gbffObjs[gbffIndex].locus_tag, protein_id = gbffObjs[gbffIndex].protein_id)
-                matchEnd += 1
-                geneIndex+=1
-                gbffIndex+=1
-                if gbffObjs[gbffIndex].start == genes[geneIndex].start:
-                    
-                    matchStart += 1
-                    perfect += 1
-
-            elif genes[geneIndex].start < gbffObjs[gbffIndex].start:
-                nomatchGenes +=1
-                geneIndex+=1
-            
-            elif gbffObjs[gbffIndex].start < genes[geneIndex].start:
-                nomatchGbff+=1
-                gbffIndex+=1
-
-            elif gbffObjs[gbffIndex].start == genes[geneIndex].start:## weird case
-                matchStartNoStop+1
-                if gbffObjs[gbffIndex].stop < genes[geneIndex].stop:
-                    gbffIndex+=1
-                else:
-                    geneIndex +=1
-
-        else:
-            if genes[geneIndex].contig != precContig:
-                nomatchGenes+=1
-                geneIndex +=1
-            elif gbffObjs[gbffIndex].contig != precContig:
-                nomatchGbff+=1
-                gbffIndex +=1
-    
-    if gbffIndex < len(gbffObjs) - 1:
-        nomatchGbff += len(gbffObjs)-1 - gbffIndex
-
-    if geneIndex < len(genes) - 1:
-        nomatchGenes += len(genes)-1 - geneIndex 
-
-    print(f"perfect : {perfect}, end match : {matchEnd}, start match : {matchStart}, noGeneMatch : {nomatchGenes}, no gbff match : {nomatchGbff}")
-    if matchStartNoStop > 0:
-        print(f"start but no stop : {matchStartNoStop}")
+        line = lines.pop()  # first sequence line.
+        sequence = ""
+        while not line.startswith('//'):
+            sequence += line[10:].replace(' ', '').strip().upper()
+            line = lines.pop()
+        # ended the contig/sequence.
+        contigs[contigID] = sequence
+    return contigs
 
 
 def cmdLine():
@@ -733,8 +626,8 @@ def cmdLine():
     parser = argparse.ArgumentParser()
     parser.add_argument('--fna',  required=False, type=str,
                         help="fasta(.gz) file to annotate. Will be used if given.")
-    parser.add_argument('--gbff', required = False, type=str,
-                        help = ".gbff (or .gbk) file to annotate."
+    parser.add_argument('--gbff', required=False, type=str,
+                        help=".gbff (or .gbk) file to annotate."
                         " sequence will be used if no fna files are given.")
     parser.add_argument('--overlap', required=False, action='store_false',
                         default=True, help="Use to not remove genes overlapping with RNA features.")
@@ -754,16 +647,19 @@ def cmdLine():
                         help="Different formats that you want as output, separated by a ','. Accepted strings are:  faa fna gff ffn.")
     parser.add_argument("--verbose", required=False, action="store_true",
                         default=False, help="Use to see the DEBUG log, which outputs uppon")
-    parser.add_argument("--compare",required = False,action = "store_true",
-                        default = False, help = "Use to link database references from the gbff to our annotations.")
+    parser.add_argument("--compare", required=False, action="store_true",
+                        default=False, help="Use to link database references from the gbff to our annotations.")
     args = parser.parse_args()
 
-    if args.fna is None and args.gbff is None:## if any of them is not none, it's good.
-        raise Exception("You must provide at least a fna (with --fna) or a gbff (with --gbff) file to annotate from.")
+    # if any of them is not none, it's good.
+    if args.fna is None and args.gbff is None:
+        raise Exception(
+            "You must provide at least a fna (with --fna) or a gbff (with --gbff) file to annotate from.")
     if args.locustag is None:
         args.locustag = ''.join(choice(ascii_uppercase) for i in range(12))
     if args.compare and args.gbff is None:
-        raise Exception("You asked to link database references from a given gbff but did not give any gbff.")
+        raise Exception(
+            "You asked to link database references from a given gbff but did not give any gbff.")
     return args
 
 
@@ -779,25 +675,19 @@ def main():
 
     version_numbers = check_versions()
 
-    if args.compare and args.fna is None:
-        logging.getLogger().info("Reading the dna sequences and the gene informations from the gbff file.")
-        gbffObjs, contigs = read_gbff(args.gbff)
-        fastaFile = write_tmp_fasta(contigs)
-    elif args.compare:## args.fna is not none
-        logging.getLogger().info("Reading the gene informations from the gbff file.")
-        gbffObjs, _ = read_gbff(args.gbff)
-    elif args.fna is None:## there will be no comparisons.
-        logging.getLogger().info("Reading the dna sequences from the gbff file.")
-        _, contigs = read_gbff(args.gbff)
-        fastaFile = write_tmp_fasta(contigs)
+    if args.gbff:
+        gbffFile = read_compressed_or_not(args.gbff)
 
-    if args.fna:
+    if args.fna is None:
+        logging.getLogger().info("Reading the dna sequences from the gbff file.")
+        contigs = read_gbff(gbffFile)
+        fastaFile = write_tmp_fasta(contigs)
+    else:
         logging.getLogger().info("Reading the dna sequences from the fna file.")
         fastaFile = read_compressed_or_not(args.fna)
         contigs = read_fasta(fastaFile)
         if is_compressed(args.fna):
             fastaFile = write_tmp_fasta(contigs)
-        
 
     genes = syntaxic_annotation(
         fastaFile, args.cpu, args.norna, args.locustag)
@@ -812,7 +702,7 @@ def main():
     logging.getLogger().info("Writting output files...")
     if args.basename:
         outbasename = os.path.abspath(
-        args.output + "/" + args.basename)
+            args.output + "/" + args.basename)
     elif args.fna:
         outbasename = mk_basename(args.output, args.fna)
     else:
@@ -821,14 +711,8 @@ def main():
     if not os.path.exists(args.output):
         os.makedirs(args.output)
 
-    if args.compare:
-        logging.getLogger().info("Adding databases informations to our annotations from the gbff file...")
-        compare_to_gbff(contigs, genes, gbffObjs)
-
     write_output(outbasename, contigs, genes, args.compress,
                  args.format, args.cpu, version_numbers)
-
-    
 
     logging.getLogger().info(
         f"There is a total of {len(genes)} annotated features.")
