@@ -654,12 +654,11 @@ def main():
 
     version_numbers = check_versions()
 
-    if args.gbff:
-        gbffFile = read_compressed_or_not(args.gbff)
-
     if args.fna is None:
+        gbffFile = read_compressed_or_not(args.gbff)
         logging.getLogger().info("Reading the dna sequences from the gbff file.")
         contigs = read_gbff(gbffFile)
+        gbffFile.close()
         fastaFile = write_tmp_fasta(contigs)
     else:
         logging.getLogger().info("Reading the dna sequences from the fna file.")
