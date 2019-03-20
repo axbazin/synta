@@ -47,7 +47,7 @@ class gene:
         Feature = f"{self.contig}\t{soft}: {version}\tgene\t{self.start}\t{self.stop}\t1\t{self.strand}\t0\tID=gene_{self.ID}\n"
         Feature += f'{self.contig}\t{soft}: {version}\t{self.type}\t{self.start}\t{self.stop}\t1\t{self.strand}\t0\tID={self.ID};Parent=gene_{self.ID};inference={self.inference}'
         
-        if self.dbxref is not None:
+        if self.dbxref:
             Feature += f";db_ref={ ','.join(self.dbxref)}"
         if self.locus_tag is not None:
             Feature += f";locus_tag={self.locus_tag}"
@@ -589,72 +589,78 @@ def check_versions():
     return {'CDS': ('.'.join(proVersion), "Prodigal"), 'tRNA': ('.'.join(araVersion), "ARAGORN"), 'rRNA': ('.'.join(infVersion), "INFERNAL")}
 
 
-def read_gbff(gbff):
+def read_gbff(gbffFile):
+    """
+        Reads a file-like object containing a gbff file.
+    """
     geneObjs = []
     contigs = {}
     frameshifts = 0
+    incomplete = 0
     logging.getLogger().debug("Extracting genes informations from the given gbff")
-    with open(gbff,"r") as gbffFile:
-        lines = gbffFile.readlines()[::-1]## revert the order of the file, to read the first line first.
-        while len(lines) != 0:
-            line = lines.pop()
+    lines = gbffFile.readlines()[::-1]## revert the order of the file, to read the first line first.
+    while len(lines) != 0:
+        line = lines.pop()
 
-            if line.startswith('LOCUS'):## beginning of contig.## if multicontig, should happen right after '//'.
-                while not line.startswith('FEATURES'):
-                    if line.startswith('VERSION'):
-                        contigID = line[12:].strip()
-                    line = lines.pop()
-            ## start of the feature object.
-            dbxref = set()
-            protein_id = ""
-            locus_tag = ""
-            usefulInfo = False
-            line = lines.pop() ##
-            while not line.startswith("CONTIG"):
-                currType = line[5:21].strip()
-                if currType != "":
-                    if usefulInfo:##anything needs a locus tag (in the format description)
-                        newGene = gene(protein_id, contigID, start, end, strand, objType)
-                        newGene.saveDBinfo(dbxref, locus_tag, protein_id)
-                        geneObjs.append(newGene)
-                    usefulInfo = True
-                    objType = currType
-                    if objType in ['tRNA','CDS','rRNA']:
-                        dbxref = set()
-                        protein_id = ""
-                        locus_tag = "" 
-                        try:
-                            if line[21:].startswith('complement('):
-                                strand = "-"
-                                start, end = line[32:].replace(')','').split("..")
-                            else:
-                                strand = "+"
-                                start, end = line[21:].strip().split('..')
-                        except ValueError:
-                            # print('Frameshift')
-                            frameshifts+=1
-                            pass ## don't know what to do with that.
-                            ## there is a protein with a frameshift mecanism.
-                    else:
+        if line.startswith('LOCUS'):## beginning of contig.## if multicontig, should happen right after '//'.
+            while not line.startswith('FEATURES'):
+                if line.startswith('VERSION'):
+                    contigID = line[12:].strip()
+                line = lines.pop()
+        ## start of the feature object.
+        dbxref = set()
+        protein_id = ""
+        locus_tag = ""
+        usefulInfo = False
+        line = lines.pop() ##
+        while not line.startswith("ORIGIN"):
+            currType = line[5:21].strip()
+            if currType != "":
+                if usefulInfo:##anything needs a locus tag (in the format description)
+                    newGene = gene(protein_id, contigID, start, end, strand, objType)
+                    newGene.saveDBinfo(dbxref, locus_tag, protein_id)
+                    geneObjs.append(newGene)
+                usefulInfo = True
+                objType = currType
+                if objType in ['CDS']:## only CDS for now
+                    dbxref = set()
+                    protein_id = ""
+                    locus_tag = "" 
+                    try:
+                        if line[21:].startswith('complement('):
+                            strand = "-"
+                            start, end = line[32:].replace(')','').split("..")
+                        else:
+                            strand = "+"
+                            start, end = line[21:].strip().split('..')
+                        if '>' in start or '<' in start or '>' in end or '<' in end:
+                            incomplete += 1
+                            usefulInfo = False
+                    except ValueError:
+                        # print('Frameshift')
+                        frameshifts+=1
                         usefulInfo = False
-                elif usefulInfo:## current info goes to current objtype, if it's useful.
-                    if line[21:].startswith("/db_xref"):
-                        dbxref.add(line.split("=")[1].replace('"',''))
-                    elif line[21:].startswith('/locus_tag'):
-                        locus_tag = line.split("=")[1].replace('"','')
-                    elif line[21:].startswith('/protein_id'):
-                        protein_id = line.split('=')[1].replace('"','')
-                line = lines.pop()
-            ## end of contig.
-            line = lines.pop()##ORIGIN line.
-            line = lines.pop()##first sequence line.
-            ## if the seq was to be gotten, it would be here.
-            sequence = ""
-            while not line.startswith('//'):
-                sequence += line[10:].replace(" ","").strip()
-                line = lines.pop()
-            ##ended the contig/sequence.
-            contigs[contigID] = sequence
+                        ## don't know what to do with that, ignoring for now.
+                        ## there is a protein with a frameshift mecanism.
+                else:
+                    usefulInfo = False
+            elif usefulInfo:## current info goes to current objtype, if it's useful.
+                if line[21:].startswith("/db_xref"):
+                    dbxref.add(line.split("=")[1].replace('"','').strip())
+                elif line[21:].startswith('/locus_tag'):
+                    locus_tag = line.split("=")[1].replace('"','').strip()
+                elif line[21:].startswith('/protein_id'):
+                    protein_id = line.split('=')[1].replace('"','').strip()
+            line = lines.pop()
+        ## end of contig.
+        line = lines.pop()##first sequence line.
+        ## if the seq was to be gotten, it would be here.
+        sequence = ""
+        while not line.startswith('//'):
+            sequence += line[10:].replace(" ","").strip()
+            line = lines.pop()
+        ##ended the contig/sequence.
+        contigs[contigID] = sequence.upper()
             
     logging.getLogger().debug("Done extracting informations from the gbff")
     logging.getLogger().debug(f"There was {frameshifts} elements with multiple frames.")
@@ -674,46 +680,75 @@ def compare_to_gbff(contigs, genes, gbffObjs):
     nomatchGenes = 0
     matchEnd = 0
     matchStart = 0
-    matchStartNoStop = 0
+
     perfect = 0
     while gbffIndex < len(gbffObjs) and geneIndex < len(genes):
-
-        if gbffObjs[gbffIndex].contig == genes[geneIndex].contig:## then we can compare
-            precContig = genes[geneIndex].contig                    
-           
-            if gbffObjs[gbffIndex].stop == genes[geneIndex].stop:## start is different but stop is equal.
-                ## if stop is equal, we consider the protein being the same !
-                genes[geneIndex].saveDBinfo(dbxref = gbffObjs[gbffIndex].dbxref, locus = gbffObjs[gbffIndex].locus_tag, protein_id = gbffObjs[gbffIndex].protein_id)
-                matchEnd += 1
-                geneIndex+=1
-                gbffIndex+=1
-                if gbffObjs[gbffIndex].start == genes[geneIndex].start:
+        # print(gbffIndex, geneIndex)
+        # print(gbffObjs[gbffIndex].contig, genes[geneIndex].contig )
+        # print(gbffObjs[gbffIndex].strand, genes[geneIndex].strand)
+        # print(gbffObjs[gbffIndex].start, genes[geneIndex].start)
+        # print(gbffObjs[gbffIndex].stop, genes[geneIndex].stop)
+        # print("#####")
+        if gbffObjs[gbffIndex].contig == genes[geneIndex].contig and gbffObjs[gbffIndex].strand == genes[geneIndex].strand:## then we can compare
+            precContig = genes[geneIndex].contig
+            if gbffObjs[gbffIndex].strand == "+":
+                if gbffObjs[gbffIndex].stop == genes[geneIndex].stop:## start is different but stop is equal.
+                    ## if stop is equal, we consider the protein being the same !
+                    genes[geneIndex].saveDBinfo(dbxref = gbffObjs[gbffIndex].dbxref, locus = gbffObjs[gbffIndex].locus_tag, protein_id = gbffObjs[gbffIndex].protein_id)
+                    matchEnd += 1
                     
-                    matchStart += 1
-                    perfect += 1
-
-            elif genes[geneIndex].start < gbffObjs[gbffIndex].start:
-                nomatchGenes +=1
-                geneIndex+=1
-            
-            elif gbffObjs[gbffIndex].start < genes[geneIndex].start:
-                nomatchGbff+=1
-                gbffIndex+=1
-
-            elif gbffObjs[gbffIndex].start == genes[geneIndex].start:## weird case
-                matchStartNoStop+1
-                if gbffObjs[gbffIndex].stop < genes[geneIndex].stop:
+                    if gbffObjs[gbffIndex].start == genes[geneIndex].start:
+                        
+                        matchStart += 1
+                        perfect += 1
+                    geneIndex+=1
                     gbffIndex+=1
-                else:
-                    geneIndex +=1
 
+                elif genes[geneIndex].start < gbffObjs[gbffIndex].start:
+                    nomatchGenes +=1
+                    geneIndex+=1
+                
+                elif gbffObjs[gbffIndex].start < genes[geneIndex].start:
+                    nomatchGbff+=1
+                    gbffIndex+=1
+            else:## 'start' is the actual stop.
+                if gbffObjs[gbffIndex].start == genes[geneIndex].start:## start is different but stop is equal.
+                    ## if stop is equal, we consider the protein being the same !
+                    genes[geneIndex].saveDBinfo(dbxref = gbffObjs[gbffIndex].dbxref, locus = gbffObjs[gbffIndex].locus_tag, protein_id = gbffObjs[gbffIndex].protein_id)
+                    matchEnd += 1
+                    
+                    if gbffObjs[gbffIndex].stop == genes[geneIndex].stop:
+                        
+                        matchStart += 1
+                        perfect += 1
+                    geneIndex+=1
+                    gbffIndex+=1
+
+                elif genes[geneIndex].stop < gbffObjs[gbffIndex].stop:
+                    nomatchGenes +=1
+                    geneIndex+=1
+                
+                elif gbffObjs[gbffIndex].stop < genes[geneIndex].stop:
+                    nomatchGbff+=1
+                    gbffIndex+=1
         else:
-            if genes[geneIndex].contig != precContig:
-                nomatchGenes+=1
-                geneIndex +=1
-            elif gbffObjs[gbffIndex].contig != precContig:
-                nomatchGbff+=1
-                gbffIndex +=1
+            if gbffObjs[gbffIndex].contig != genes[geneIndex].contig:
+                if genes[geneIndex].contig != precContig:
+                    nomatchGbff+=1
+                    gbffIndex +=1
+                elif gbffObjs[gbffIndex].contig != precContig:
+                    nomatchGenes+=1
+                    geneIndex +=1
+            elif gbffObjs[gbffIndex].strand != genes[geneIndex].strand:
+                if genes[geneIndex].start < gbffObjs[gbffIndex].start:
+                    nomatchGenes +=1
+                    geneIndex+=1
+                
+                elif gbffObjs[gbffIndex].start < genes[geneIndex].start:
+                    nomatchGbff+=1
+                    gbffIndex+=1
+                else:## they're equal on different strands ???
+                    print("WHUT?")
     
     if gbffIndex < len(gbffObjs) - 1:
         nomatchGbff += len(gbffObjs)-1 - gbffIndex
@@ -722,9 +757,7 @@ def compare_to_gbff(contigs, genes, gbffObjs):
         nomatchGenes += len(genes)-1 - geneIndex 
 
     print(f"perfect : {perfect}, end match : {matchEnd}, start match : {matchStart}, noGeneMatch : {nomatchGenes}, no gbff match : {nomatchGbff}")
-    if matchStartNoStop > 0:
-        print(f"start but no stop : {matchStartNoStop}")
-
+    print(f"total genes: {len(genes)}, total gbff: {len(gbffObjs)}")
 
 def cmdLine():
     """
@@ -764,6 +797,9 @@ def cmdLine():
         args.locustag = ''.join(choice(ascii_uppercase) for i in range(12))
     if args.compare and args.gbff is None:
         raise Exception("You asked to link database references from a given gbff but did not give any gbff.")
+    if args.gbff is not None and args.compare is None and args.fna is not None:
+        logging.getLogger().warn("You provided a gbff but that was not useful since you provided also a fna and did not ask to realise a comparison. Ignoring the gbff file")
+        args.gbff = None
     return args
 
 
@@ -778,17 +814,19 @@ def main():
                         format='\n%(asctime)s %(filename)s:l%(lineno)d %(levelname)s\t%(message)s', datefmt='%Y-%m-%d %H:%M:%S')
 
     version_numbers = check_versions()
+    if args.gbff:
+        gbffFile = read_compressed_or_not(args.gbff)
 
     if args.compare and args.fna is None:
         logging.getLogger().info("Reading the dna sequences and the gene informations from the gbff file.")
-        gbffObjs, contigs = read_gbff(args.gbff)
+        gbffObjs, contigs = read_gbff(gbffFile)
         fastaFile = write_tmp_fasta(contigs)
     elif args.compare:## args.fna is not none
         logging.getLogger().info("Reading the gene informations from the gbff file.")
-        gbffObjs, _ = read_gbff(args.gbff)
+        gbffObjs, _ = read_gbff(gbffFile)
     elif args.fna is None:## there will be no comparisons.
         logging.getLogger().info("Reading the dna sequences from the gbff file.")
-        _, contigs = read_gbff(args.gbff)
+        _, contigs = read_gbff(gbffFile)
         fastaFile = write_tmp_fasta(contigs)
 
     if args.fna:
