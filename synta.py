@@ -596,6 +596,8 @@ def read_gbff(gbffFile):
     geneObjs = []
     contigs = {}
     frameshifts = 0
+    pseudo = 0
+    trans_except = 0
     incomplete = 0
     logging.getLogger().debug("Extracting genes informations from the given gbff")
     lines = gbffFile.readlines()[::-1]## revert the order of the file, to read the first line first.
@@ -649,8 +651,14 @@ def read_gbff(gbffFile):
                     dbxref.add(line.split("=")[1].replace('"','').strip())
                 elif line[21:].startswith('/locus_tag'):
                     locus_tag = line.split("=")[1].replace('"','').strip()
-                elif line[21:].startswith('/protein_id'):
+                elif line[21:].startswith('/protein_id'):## remove pseudogenes.
                     protein_id = line.split('=')[1].replace('"','').strip()
+                elif line[21:].startswith("/pseudo"):## if it's a pseudogene, we're not keeping it.
+                    pseudo +=1
+                    usefulInfo = False
+                elif line[21:].startswith("/transl_except"):## that's probably a codon stop into selenocystein.
+                    trans_except +=1 
+                    usefulInfo = False
             line = lines.pop()
         ## end of contig.
         line = lines.pop()##first sequence line.
@@ -663,12 +671,11 @@ def read_gbff(gbffFile):
         contigs[contigID] = sequence.upper()
             
     logging.getLogger().debug("Done extracting informations from the gbff")
-    logging.getLogger().debug(f"There was {frameshifts} elements with multiple frames.")
+    logging.getLogger().debug(f"There was {frameshifts} elements with multiple frames, {incomplete} incomplete genes, {pseudo} pseudogenes and {trans_except} translation exceptions.")
     return geneObjs, contigs
 
 
 def compare_to_gbff(contigs, genes, gbffObjs):
-    
 
     gbffObjs = sorted(gbffObjs, key = lambda x : ( -len(contigs[x.contig]), x.start) )## sort the same way that 'genes'
     
@@ -696,9 +703,7 @@ def compare_to_gbff(contigs, genes, gbffObjs):
                     ## if stop is equal, we consider the protein being the same !
                     genes[geneIndex].saveDBinfo(dbxref = gbffObjs[gbffIndex].dbxref, locus = gbffObjs[gbffIndex].locus_tag, protein_id = gbffObjs[gbffIndex].protein_id)
                     matchEnd += 1
-                    
                     if gbffObjs[gbffIndex].start == genes[geneIndex].start:
-                        
                         matchStart += 1
                         perfect += 1
                     geneIndex+=1
@@ -718,7 +723,6 @@ def compare_to_gbff(contigs, genes, gbffObjs):
                     matchEnd += 1
                     
                     if gbffObjs[gbffIndex].stop == genes[geneIndex].stop:
-                        
                         matchStart += 1
                         perfect += 1
                     geneIndex+=1
@@ -797,21 +801,22 @@ def cmdLine():
         args.locustag = ''.join(choice(ascii_uppercase) for i in range(12))
     if args.compare and args.gbff is None:
         raise Exception("You asked to link database references from a given gbff but did not give any gbff.")
-    if args.gbff is not None and args.compare is None and args.fna is not None:
-        logging.getLogger().warn("You provided a gbff but that was not useful since you provided also a fna and did not ask to realise a comparison. Ignoring the gbff file")
+    if args.gbff is not None and not args.compare and args.fna is not None:
+        logging.getLogger().warning("You provided a gbff but that was not useful since you provided also a fna and did not ask to realise a comparison. Ignoring the gbff file")
         args.gbff = None
     return args
 
 
 def main():
     start = time.time()
+    logging.basicConfig(stream=sys.stdout, level=logging.INFO,
+                        format='\n%(asctime)s %(filename)s:l%(lineno)d %(levelname)s\t%(message)s', datefmt='%Y-%m-%d %H:%M:%S')
     args = cmdLine()
     if args.verbose:
-        level = logging.DEBUG
+        logging.getLogger().setLevel(logging.DEBUG)
     else:
-        level = logging.INFO
-    logging.basicConfig(stream=sys.stdout, level=level,
-                        format='\n%(asctime)s %(filename)s:l%(lineno)d %(levelname)s\t%(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+        logging.getLogger().setLevel(logging.INFO)
+   
 
     version_numbers = check_versions()
     if args.gbff:
@@ -847,6 +852,10 @@ def main():
         genes = sorted(
             genes, key=lambda x:  (-len(contigs[x.contig]), x.start))
 
+    if args.compare:
+        logging.getLogger().info("Adding databases informations to our annotations from the gbff file...")
+        compare_to_gbff(contigs, genes, gbffObjs)
+
     logging.getLogger().info("Writting output files...")
     if args.basename:
         outbasename = os.path.abspath(
@@ -859,9 +868,7 @@ def main():
     if not os.path.exists(args.output):
         os.makedirs(args.output)
 
-    if args.compare:
-        logging.getLogger().info("Adding databases informations to our annotations from the gbff file...")
-        compare_to_gbff(contigs, genes, gbffObjs)
+    
 
     write_output(outbasename, contigs, genes, args.compress,
                  args.format, args.cpu, version_numbers)
