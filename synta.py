@@ -629,7 +629,7 @@ def read_gbff(gbffFile):
                     protein_id = ""
                     locus_tag = "" 
                     try:
-                        if not line[21:].startswith('join'):
+                        if not 'join' in line[21:]:
                             usefulInfo = True
                             if line[21:].startswith('complement('):
                                 strand = "-"
