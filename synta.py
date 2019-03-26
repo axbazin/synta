@@ -622,30 +622,29 @@ def read_gbff(gbffFile):
                     newGene = gene(protein_id, contigID, start, end, strand, objType)
                     newGene.saveDBinfo(dbxref, locus_tag, protein_id)
                     geneObjs.append(newGene)
-                usefulInfo = True
+                usefulInfo = False
                 objType = currType
                 if objType in ['CDS']:## only CDS for now
                     dbxref = set()
                     protein_id = ""
                     locus_tag = "" 
                     try:
-                        if line[21:].startswith('complement('):
-                            strand = "-"
-                            start, end = line[32:].replace(')','').split("..")
-                        else:
-                            strand = "+"
-                            start, end = line[21:].strip().split('..')
-                        if '>' in start or '<' in start or '>' in end or '<' in end:
-                            incomplete += 1
-                            usefulInfo = False
+                        if not line[21:].startswith('join'):
+                            usefulInfo = True
+                            if line[21:].startswith('complement('):
+                                strand = "-"
+                                start, end = line[32:].replace(')','').split("..")
+                            else:
+                                strand = "+"
+                                start, end = line[21:].strip().split('..')
+                            if '>' in start or '<' in start or '>' in end or '<' in end:
+                                usefulInfo = False
+                                incomplete += 1
                     except ValueError:
                         # print('Frameshift')
                         frameshifts+=1
-                        usefulInfo = False
                         ## don't know what to do with that, ignoring for now.
                         ## there is a protein with a frameshift mecanism.
-                else:
-                    usefulInfo = False
             elif usefulInfo:## current info goes to current objtype, if it's useful.
                 if line[21:].startswith("/db_xref"):
                     dbxref.add(line.split("=")[1].replace('"','').strip())
