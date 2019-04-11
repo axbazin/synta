@@ -246,7 +246,7 @@ def launch_prodigal(fnaFile, locustag):
         returns the annotated genes in a list of gene objects.
     """
     logging.getLogger().debug("Running Prodigal(CDS).")
-    cmd = ["prodigal", "-f", "sco", "-c", "-i", fnaFile, "-p", "single", "-q"]
+    cmd = ["prodigal", "-f", "sco", "-m", "-c", "-i", fnaFile, "-p", "single", "-q"]
     logging.getLogger().debug(f"command for Prodigal:  '{' '.join(cmd)}'")
     p = Popen(cmd, stdout=PIPE)
 
