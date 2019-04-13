@@ -394,7 +394,7 @@ def write_gff(output, contigs, genes, compress, versions):
         contig2genes[gene.contig].append(gene)
     outfile = write_compress_or_not(output + ".gff", compress)
     outfile.write("##gff-version 3\n")
-    for contig in contigs.keys():
+    for contig in sorted(contigs.keys(), key = lambda x : len(contigs[x])):#biggest contig first.
         outfile.write(
             f"##sequence-region {contig} 1 {len(contigs[contig])}\n")
         # GenBank origin is only for PanGBank. The circularity could be guessed with a gbff input.
