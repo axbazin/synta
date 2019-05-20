@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-__version__ = "0.2.1"
+__version__ = "0.2.2"
 
 from string import ascii_uppercase
 from random import choice
@@ -411,7 +411,7 @@ def write_ffn(output, contigs, genes, compress):
         Writes a ffn formated file.
     """
     logging.getLogger().debug("Writting FFN file ...")
-    outfile = write_compress_or_not(output + ".fnn", compress)
+    outfile = write_compress_or_not(output + ".ffn", compress)
     for gene in genes:
         # ffn is only for coding sequences ! (even if some softs also include RNA sequences ... It was not designed as such)
         if gene.type == "CDS":
