@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-__version__ = "0.2.2"
+__version__ = "0.2.3"
 
 from string import ascii_uppercase
 from random import choice
@@ -275,15 +275,20 @@ def launch_prodigal(fnaFile, locustag):
     return geneObjs
 
 
-def launch_infernal(fnaFile, locustag):
+def launch_infernal(fnaFile, locustag, kingdom):
     """ 
         launches Infernal in hmmer-only mode to annotate rRNAs. Takes a fna file name and a locustag to give an ID to the found genes.
         returns the annotated genes in a list of gene objects.
     """
+    if kingdom == "bacteria":
+        modelfile = os.path.dirname(os.path.realpath(__file__)) + "/cmDB/rRNA_bact.cm"
+    elif kingdom == "archaea":
+        modelfile = os.path.dirname(os.path.realpath(__file__)) + "/cmDB/rRNA_arch.cm"
+
     logging.getLogger().debug("Running Infernal(rRNA).")
     tmpFile = tempfile.NamedTemporaryFile(mode="r")
     cmd = ["cmscan", "--tblout", tmpFile.name, "--hmmonly", "--cpu",
-           str(1), "--noali", f"{os.path.dirname(os.path.realpath(__file__))}/cmDB/rRNA_proc.cm", fnaFile]
+           str(1), "--noali", modelfile, fnaFile]
     logging.getLogger().debug(f"command for Infernal:  '{' '.join(cmd)}'")
     p = Popen(cmd, stdout=open(os.devnull, "w"), stderr=PIPE)
     err = p.communicate()[1].decode().split()
@@ -478,7 +483,7 @@ def write_tmp_fasta(contigs):
     return tmpFile
 
 
-def syntaxic_annotation(fastaFile, cpu, norna, locustag):
+def syntaxic_annotation(fastaFile, cpu, norna, locustag, kingdom):
     """
         Runs the different softwares for the syntaxic annotation.
 
@@ -501,7 +506,7 @@ def syntaxic_annotation(fastaFile, cpu, norna, locustag):
                 func=launch_aragorn, args=(fastaFile.name, locustag))
             logging.getLogger().debug("Started the process launching Aragorn")
             infGenes = p.apply_async(
-                func=launch_infernal, args=(fastaFile.name, locustag))
+                func=launch_infernal, args=(fastaFile.name, locustag, kingdom))
             logging.getLogger().debug("Started the process launching Infernal")
             genes.extend(araGenes.get())
             logging.getLogger().debug("Got the results from the process for Aragorn")
@@ -809,6 +814,7 @@ def cmdLine():
                         help="Different formats that you want as output, separated by a ','. Accepted strings are:  faa fna gff ffn.")
     parser.add_argument("--verbose", required=False, action="store_true",
                         default=False, help="Use to see the DEBUG log, which outputs uppon")
+    parser.add_argument("--kingdom",required = False, type = str.lower, default = "bacteria", choices = ["bacteria","archaea"], help = "Kingdom to which the prokaryota belongs to, to know which models to use for rRNA annotation.")
     parser.add_argument("--compare", required=False, action="store_true",
                         default=False, help="Use to link database references from the gbff to our annotations.")
     parser.add_argument('--version', action='version',
@@ -866,8 +872,7 @@ def main():
         if is_compressed(args.fna):
             fastaFile = write_tmp_fasta(contigs)
 
-    genes = syntaxic_annotation(
-        fastaFile, args.cpu, args.norna, args.locustag)
+    genes = syntaxic_annotation(fastaFile, args.cpu, args.norna, args.locustag, args.kingdom)
     if args.overlap and not args.norna:
         # sorting and removing CDS that overlap.
         genes = overlap_filter(genes, contigs)
