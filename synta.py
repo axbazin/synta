@@ -283,7 +283,7 @@ def launch_infernal(fnaFile, locustag):
     logging.getLogger().debug("Running Infernal(rRNA).")
     tmpFile = tempfile.NamedTemporaryFile(mode="r")
     cmd = ["cmscan", "--tblout", tmpFile.name, "--hmmonly", "--cpu",
-           str(1), "--noali", f"{os.path.dirname(os.path.realpath(__file__))}/cmDB/rRNA_bact.cm", fnaFile]
+           str(1), "--noali", f"{os.path.dirname(os.path.realpath(__file__))}/cmDB/rRNA_proc.cm", fnaFile]
     logging.getLogger().debug(f"command for Infernal:  '{' '.join(cmd)}'")
     p = Popen(cmd, stdout=open(os.devnull, "w"), stderr=PIPE)
     err = p.communicate()[1].decode().split()
