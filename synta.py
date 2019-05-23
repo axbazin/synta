@@ -47,8 +47,8 @@ class gene:
         """
         version, soft = version_numbers[self.type]
 
-        Feature = f"{self.contig}\t{soft}: {version}\tgene\t{self.start}\t{self.stop}\t1\t{self.strand}\t0\tID=gene_{self.ID}\n"
-        Feature += f'{self.contig}\t{soft}: {version}\t{self.type}\t{self.start}\t{self.stop}\t1\t{self.strand}\t0\tID={self.ID};Parent=gene_{self.ID};inference={self.inference}'
+        Feature = f"{self.contig}\t{soft}:{version}\tgene\t{self.start}\t{self.stop}\t1\t{self.strand}\t0\tID=gene_{self.ID}\n"
+        Feature += f'{self.contig}\t{soft}:{version}\t{self.type}\t{self.start}\t{self.stop}\t1\t{self.strand}\t0\tID={self.ID};Parent=gene_{self.ID};inference={self.inference}'
 
         if self.dbxref:
             Feature += f";db_ref={ ','.join(self.dbxref)}"
@@ -233,7 +233,7 @@ def launch_aragorn(fnaFile, locustag):
                                  strand="-" if lineData[2].startswith(
                                      "c") else "+",
                                  geneType="tRNA",
-                                 inference="COORDINATES: profile: Aragorn",
+                                 inference="COORDINATES:profile",
                                  product=lineData[1] + lineData[4]))
     logging.getLogger().info(
         f"Done with Aragorn(tRNA). There are {len(geneObjs)} tRNAs.")
@@ -268,7 +268,7 @@ def launch_prodigal(fnaFile, locustag):
                                  stop=lineData[2],
                                  strand=lineData[3],
                                  geneType="CDS",
-                                 inference="ab initio prediction: Prodigal"))
+                                 inference="ab initio prediction"))
 
     logging.getLogger().info(
         f"Done with Prodigal(CDS). There are {len(geneObjs)} CDSs.")
@@ -319,7 +319,8 @@ def launch_infernal(fnaFile, locustag, kingdom):
                                  stop=stop,
                                  strand=strand,
                                  geneType="rRNA",
-                                 product=" ".join(lineData[17:])))
+                                 product=" ".join(lineData[17:]),
+                                 inference="COORDINATES:profile"))
 
     logging.getLogger().info(
         f"Done with Infernal(rRNA). There are {len(geneObjs)} rRNAs.")
@@ -402,9 +403,9 @@ def write_gff(output, contigs, genes, compress, versions):
     for contig in contigs.keys():
         outfile.write(
             f"##sequence-region {contig} 1 {len(contigs[contig])}\n")
-        # GenBank origin is only for PanGBank. The circularity could be guessed with a gbff input.
+        #The circularity could be presumed with a gbff input...
         outfile.write(
-            f"{contig}\tGenBank\tregion\t1\t{len(contigs[contig])}\t.\t+\t.\tID={contig}\n")
+            f"{contig}\tsynta:{__version__}\tregion\t1\t{len(contigs[contig])}\t.\t+\t.\tID={contig}\n")
         for gene in contig2genes[contig]:
             outfile.write(gene.get_gff(versions))
     outfile.close()
@@ -790,35 +791,30 @@ def cmdLine():
     """
         Functions that defines the command line arguments.
     """
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--fna',  required=False, type=str,
-                        help="fasta(.gz) file to annotate. Will be used if given.")
-    parser.add_argument('--gbff', required=False, type=str,
-                        help=".gbff (or .gbk) file to annotate."
-                        " sequence will be used if no fna files are given.")
-    parser.add_argument('--overlap', required=False, action='store_false',
-                        default=True, help="Use to not remove genes overlapping with RNA features.")
-    parser.add_argument('--compress', required=False, action='store_true',
-                        default=False, help="Use to compress the output files.")
-    parser.add_argument('--output', required=False, type=str, default="synta_outputdir"+time.strftime(
-        "_DATE%Y-%m-%d_HOUR%H.%M.%S", time.localtime())+"_PID"+str(os.getpid()), help="Output directory path (optionnal)")
-    parser.add_argument("--locustag", required=False, type=str,
-                        help="Locustag to use for feature ID. If not provided, it will use generic random string IDs of length 12.")
-    parser.add_argument("--basename", required=False, type=str,
-                        help="Basename to use for output files. If not provided, it will be guessed from the input file name.")
-    parser.add_argument("--norna", required=False, action="store_true",
-                        default=False, help="Use to avoid annotating RNA features.")
-    parser.add_argument("--cpu", required=False, type=int,
-                        default=1, help="Number of cpus to use.")
-    parser.add_argument("--format", required=False, type=str.lower, default="gff",
-                        help="Different formats that you want as output, separated by a ','. Accepted strings are:  faa fna gff ffn.")
-    parser.add_argument("--verbose", required=False, action="store_true",
-                        default=False, help="Use to see the DEBUG log, which outputs uppon")
-    parser.add_argument("--kingdom",required = False, type = str.lower, default = "bacteria", choices = ["bacteria","archaea"], help = "Kingdom to which the prokaryota belongs to, to know which models to use for rRNA annotation.")
-    parser.add_argument("--compare", required=False, action="store_true",
-                        default=False, help="Use to link database references from the gbff to our annotations.")
-    parser.add_argument('--version', action='version',
-                        version='%(prog)s ' + __version__)
+    parser = argparse.ArgumentParser(description = "Quickly annotates CDS, rRNA and tRNA genes in prokaryote genomes", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    
+    required = parser.add_argument_group(title = "Required arguments", description = "One of the following arguments is required :")
+
+    required.add_argument('--fna',  required=False, type=str, help="fasta(.gz) file to annotate. Will be used in priority if given.")
+    required.add_argument('--gbff', required=False, type=str, help=".gbff (or .gbk) file to annotate. The sequence will be used if no fna files are given.")
+    
+    expert = parser.add_argument_group(title = "Expert options")
+    expert.add_argument('--overlap', required=False, action='store_false',default=True, help="Use to not remove genes overlapping with RNA features.")
+    expert.add_argument("--norna", required=False, action="store_true", default=False, help="Use to avoid annotating RNA features.")
+    expert.add_argument("--kingdom",required = False, type = str.lower, default = "bacteria", choices = ["bacteria","archaea"], help = "Kingdom to which the prokaryota belongs to, to know which models to use for rRNA annotation.")
+    expert.add_argument("--compare", required=False, action="store_true", default=False, help="Use to link database references from the gbff to our annotations.")
+    
+    outlog = parser.add_argument_group(title = "Output and formating")
+    outlog.add_argument('--compress', required=False, action='store_true',default=False, help="Compress the output files using gzip.")
+    outlog.add_argument('--output', required=False, type=str, default="synta_outputdir"+time.strftime("_DATE%Y-%m-%d_HOUR%H.%M.%S", time.localtime())+"_PID"+str(os.getpid()), help="Output directory path (optionnal)")
+    outlog.add_argument("--format", required=False, type=str.lower, default="gff", help="Different formats that you want as output, separated by a ','. Accepted strings are:  faa fna gff ffn.")
+    outlog.add_argument("--locustag", required=False, type=str, help="Locustag to use for feature ID. If not provided, it will use generic random string IDs of length 12.")
+    outlog.add_argument("--basename", required=False, type=str, help="Basename to use for output files. If not provided, it will be guessed from the input file name.")
+
+    misc = parser.add_argument_group(title = "Misc options")
+    misc.add_argument("--cpu", required=False, type=int, default=1, help="Number of cpus to use.")
+    misc.add_argument("--verbose", required=False, action="store_true", default=False, help="show the DEBUG log")
+    misc.add_argument('--version', action='version', version='%(prog)s ' + __version__)
     args = parser.parse_args()
 
     # if any of them is not none, it's good.
