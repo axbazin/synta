@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+#coding : utf-8
+# PYTHON_ARGCOMPLETE_OK
 
 __version__ = "0.2.3"
 
@@ -16,6 +18,12 @@ import os
 import logging
 import sys
 from collections import defaultdict
+
+#flavor package, not required.
+try:
+    import argcomplete
+except ImportError:
+    pass
 
 # minimum python version to use is 3.6, there are features that don't work with older versions in this code. (most notably, f-strings)
 assert sys.version_info >= (3, 6)
@@ -286,7 +294,7 @@ def launch_infernal(fnaFile, locustag, kingdom):
         modelfile = os.path.dirname(os.path.realpath(__file__)) + "/cmDB/rRNA_arch.cm"
 
     logging.getLogger().debug("Running Infernal(rRNA).")
-    tmpFile = tempfile.NamedTemporaryFile(mode="r")
+    tmpFile = tempfile.NamedTemporaryFile(mode="r", dir = "/dev/shm/")
     cmd = ["cmscan", "--tblout", tmpFile.name, "--hmmonly", "--cpu",
            str(1), "--noali", modelfile, fnaFile]
     logging.getLogger().debug(f"command for Infernal:  '{' '.join(cmd)}'")
@@ -471,7 +479,7 @@ def write_tmp_fasta(contigs):
 
         This is for the cases where the given file is compressed, then we write a temporary file for the annotation tools to read from. The file will be deleted when close() is called.
     """
-    tmpFile = tempfile.NamedTemporaryFile(mode="w")
+    tmpFile = tempfile.NamedTemporaryFile(mode="w", dir = "/dev/shm/")
     for header in contigs.keys():
         tmpFile.write(f">{header}\n")
         logging.getLogger().debug(
@@ -810,7 +818,7 @@ def cmdLine():
     outlog.add_argument("--format", required=False, type=str.lower, default="gff", help="Different formats that you want as output, separated by a ','. Accepted strings are:  faa fna gff ffn.")
     outlog.add_argument("--locustag", required=False, type=str, help="Locustag to use for feature ID. If not provided, it will use generic random string IDs of length 12.")
     outlog.add_argument("--basename", required=False, type=str, help="Basename to use for output files. If not provided, it will be guessed from the input file name.")
-
+    outlog.add_argument("--log",required = False, action = "store_true", help = "Save log to file")
     misc = parser.add_argument_group(title = "Misc options")
     misc.add_argument("--cpu", required=False, type=int, default=1, help="Number of cpus to use.")
     misc.add_argument("--verbose", required=False, action="store_true", default=False, help="show the DEBUG log")
@@ -834,14 +842,25 @@ def cmdLine():
 
 def main():
     start = time.time()
-    logging.basicConfig(stream=sys.stdout, level=logging.INFO,
-                        format='\n%(asctime)s %(filename)s:l%(lineno)d %(levelname)s\t%(message)s', datefmt='%Y-%m-%d %H:%M:%S')
     args = cmdLine()
 
-    if args.verbose:
-        logging.getLogger().setLevel(logging.DEBUG)
+    if args.basename:
+        outbasename = os.path.abspath(args.output + "/" + args.basename)
+    elif args.fna:
+        outbasename = mk_basename(args.output, args.fna)
     else:
-        logging.getLogger().setLevel(logging.INFO)
+        outbasename = mk_basename(args.output, args.gbff)
+    if args.verbose:
+        level = logging.DEBUG
+    else:
+        level = logging.INFO
+
+    logging.basicConfig(stream=sys.stdout, level=level, format='%(asctime)s %(filename)s:l%(lineno)d %(levelname)s\t%(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+    if args.log :
+        fhandler = logging.FileHandler(filename = outbasename + ".log",mode = "w")
+        fhandler.setFormatter(logging.Formatter(fmt = "%(asctime)s %(filename)s:l%(lineno)d %(levelname)s\t%(message)s", datefmt='%Y-%m-%d %H:%M:%S'))
+        fhandler.setLevel(level)
+        logging.getLogger().addHandler(fhandler)
     logging.getLogger().info("version: synta " + __version__)
 
     version_numbers = check_versions()
@@ -883,13 +902,6 @@ def main():
         compare_to_gbff(contigs, genes, gbffObjs)
 
     logging.getLogger().info("Writting output files...")
-    if args.basename:
-        outbasename = os.path.abspath(
-            args.output + "/" + args.basename)
-    elif args.fna:
-        outbasename = mk_basename(args.output, args.fna)
-    else:
-        outbasename = mk_basename(args.output, args.gbff)
 
     if not os.path.exists(args.output):
         os.makedirs(args.output)
