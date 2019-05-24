@@ -844,6 +844,10 @@ def main():
     start = time.time()
     args = cmdLine()
 
+
+    if not os.path.exists(args.output):
+        os.makedirs(args.output)
+
     if args.basename:
         outbasename = os.path.abspath(args.output + "/" + args.basename)
     elif args.fna:
@@ -902,9 +906,6 @@ def main():
         compare_to_gbff(contigs, genes, gbffObjs)
 
     logging.getLogger().info("Writting output files...")
-
-    if not os.path.exists(args.output):
-        os.makedirs(args.output)
 
     write_output(outbasename, contigs, genes, args.compress,
                  args.format, args.cpu, version_numbers)
