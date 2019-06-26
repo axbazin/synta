@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #coding : utf-8
-# PYTHON_ARGCOMPLETE_OK
+#PYTHON_ARGCOMPLETE_OK
 
 __version__ = "0.2.3"
 
@@ -722,6 +722,7 @@ def cmdLine():
     """
     parser = argparse.ArgumentParser(description = "Quickly annotates CDS, rRNA and tRNA genes in prokaryote genomes", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     
+
     required = parser.add_argument_group(title = "Required arguments", description = "One of the following arguments is required :")
 
     required.add_argument('--fna',  required=False, type=str, help="fasta(.gz) file to annotate. Will be used in priority if given.")
@@ -744,6 +745,9 @@ def cmdLine():
     misc.add_argument("--cpu", required=False, type=int, default=1, help="Number of cpus to use.")
     misc.add_argument("--verbose", required=False, action="store_true", default=False, help="show the DEBUG log")
     misc.add_argument('--version', action='version', version='%(prog)s ' + __version__)
+
+    if "argcomplete" in sys.modules:
+        argcomplete.autocomplete(parser)
     args = parser.parse_args()
 
     # if any of them is not none, it's good.
