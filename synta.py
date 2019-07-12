@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
+#coding : utf-8
+#PYTHON_ARGCOMPLETE_OK
 
-__version__ = "0.2.1"
+__version__ = "0.2.3"
 
 from string import ascii_uppercase
 from random import choice
@@ -17,12 +19,22 @@ import logging
 import sys
 from collections import defaultdict
 
+#flavor package, not required.
+try:
+    import argcomplete
+except ImportError:
+    pass
+
+#own scripts
+from utilitaries.genetic_codes import genetic_codes
+from utilitaries.file_handlers import is_compressed, read_compressed_or_not, write_compress_or_not
+
 # minimum python version to use is 3.6, there are features that don't work with older versions in this code. (most notably, f-strings)
 assert sys.version_info >= (3, 6)
 
 
 class gene:
-    def __init__(self, ID, contig, start, stop, strand, geneType, product=None, inference=None):
+    def __init__(self, ID, contig, start, stop, strand, geneType, genetic_code = None, product=None, inference=None):
         self.ID = ID
         self.contig = contig
         self.start = int(start)
@@ -31,6 +43,7 @@ class gene:
         self.strand = strand
         self.inference = inference
         self.product = product
+        self.genetic_code = genetic_code
 
         self.dbxref = None
         self.locus_tag = None
@@ -47,8 +60,8 @@ class gene:
         """
         version, soft = version_numbers[self.type]
 
-        Feature = f"{self.contig}\t{soft}: {version}\tgene\t{self.start}\t{self.stop}\t1\t{self.strand}\t0\tID=gene_{self.ID}\n"
-        Feature += f'{self.contig}\t{soft}: {version}\t{self.type}\t{self.start}\t{self.stop}\t1\t{self.strand}\t0\tID={self.ID};Parent=gene_{self.ID};inference={self.inference}'
+        Feature = f"{self.contig}\t{soft}:{version}\tgene\t{self.start}\t{self.stop}\t1\t{self.strand}\t0\tID=gene_{self.ID}\n"
+        Feature += f'{self.contig}\t{soft}:{version}\t{self.type}\t{self.start}\t{self.stop}\t1\t{self.strand}\t0\tID={self.ID};Parent=gene_{self.ID};inference={self.inference}'
 
         if self.dbxref:
             Feature += f";db_ref={ ','.join(self.dbxref)}"
@@ -60,9 +73,9 @@ class gene:
         Feature += f";product={self.product}\n" if self.product else "\n"
         return Feature
 
-    def get_faa(self, dna_seq):
+    def get_faa(self, dna_seq, code):
         """Takes a dna sequence string and returns the gene object's ID with the string  translated in faa format"""
-        faa_seq = translate(dna_seq)
+        faa_seq = translate(dna_seq, code)
         seq = f">{self.ID}\n"
         j = 0
         seq += faa_seq[j: j+60] + "\n"
@@ -88,7 +101,7 @@ def reverse_complement(seq):
     """ reverse complement the given dna sequence """
     complement = {'A':  'T', 'C':  'G', 'G':  'C', 'T':  'A', 'N': 'N', 'R': 'Y', 'Y': 'R',
                   'S': 'S', 'W': 'W', 'K': 'M', 'M': 'K', 'B': 'V', 'V': 'B', 'D': 'H', 'H': 'D'}
-    # see https: //www.bioinformatics.org/sms/iupac.html for the code.
+    # see https://www.bioinformatics.org/sms/iupac.html for the code.
     # complement = {'A':  'T', 'C':  'G', 'G':  'C', 'T':  'A', 'N': 'N' } ## basic
     rcseq = ""
     for i in reversed(seq):
@@ -96,46 +109,12 @@ def reverse_complement(seq):
     return rcseq
 
 
-def translate(seq):
+def translate(seq, code):
     """ translates the given dna sequence with table code 11 of the ncbi (bacteria)"""
-    start_table = {
-        'ATA': 'M', 'ATC': 'M', 'ATT': 'M', 'ATG': 'M', 'ATN': 'M', 'ATR': 'M', 'ATY': 'M', 'ATS': 'M', 'ATW': 'M', 'ATK': 'M', 'ATM': 'M', 'ATB': 'M', 'ATD': 'M', 'ATH': 'M', 'ATV': 'M',
-        'ACA': 'T', 'ACC': 'T', 'ACG': 'T', 'ACT': 'T', 'ACN': 'T', 'ACR': 'T', 'ACY': 'T', 'ACS': 'T', 'ACW': 'T', 'ACK': 'T', 'ACM': 'T', 'ACB': 'T', 'ACD': 'T', 'ACH': 'T', 'ACV': 'T',
-        'AAC': 'N', 'AAT': 'N', 'AAA': 'K', 'AAG': 'K', 'AAY': 'N', 'AAR': 'K',
-        'AGC': 'S', 'AGT': 'S', 'AGA': 'R', 'AGG': 'R', 'AGY': 'S', 'AGR': 'R',
-        'CTA': 'L', 'CTC': 'L', 'CTG': 'M', 'CTT': 'L', 'CTB': 'L', 'CTY': 'L', 'CTW': 'L', 'CTM': 'L', 'CTH': 'L',
-        'CCA': 'P', 'CCC': 'P', 'CCG': 'P', 'CCT': 'P', 'CCN': 'P', 'CCR': 'P', 'CCY': 'P', 'CCS': 'P', 'CCW': 'P', 'CCK': 'P', 'CCM': 'P', 'CCB': 'P', 'CCD': 'P', 'CCH': 'P', 'CCV': 'P',
-        'CAC': 'H', 'CAT': 'H', 'CAA': 'Q', 'CAG': 'Q', 'CAY': 'H', 'CAR': 'Q',
-        'CGA': 'R', 'CGC': 'R', 'CGG': 'R', 'CGT': 'R', 'CGN': 'R', 'CGR': 'R', 'CGY': 'R', 'CGS': 'R', 'CGW': 'R', 'CGK': 'R', 'CGM': 'R', 'CGB': 'R', 'CGD': 'R', 'CGH': 'R', 'CGV': 'R',
-        'GTA': 'V', 'GTC': 'V', 'GTG': 'M', 'GTT': 'V', 'GTB': 'V', 'GTY': 'V', 'GTW': 'V', 'GTM': 'V', 'GTH': 'V',
-        'GCA': 'A', 'GCC': 'A', 'GCG': 'A', 'GCT': 'A', 'GCN': 'A', 'GCR': 'A', 'GCY': 'A', 'GCS': 'A', 'GCW': 'A', 'GCK': 'A', 'GCM': 'A', 'GCB': 'A', 'GCD': 'A', 'GCH': 'A', 'GCV': 'A',
-        'GAC': 'D', 'GAT': 'D', 'GAA': 'E', 'GAG': 'E', 'GAY': 'D', 'GAR': 'E',
-        'GGA': 'G', 'GGC': 'G', 'GGG': 'G', 'GGT': 'G', 'GGN': 'G', 'GGR': 'G', 'GGY': 'G', 'GGS': 'G', 'GGW': 'G', 'GGK': 'G', 'GGM': 'G', 'GGB': 'G', 'GGD': 'G', 'GGH': 'G', 'GGV': 'G',
-        'TCA': 'S', 'TCC': 'S', 'TCG': 'S', 'TCT': 'S', 'TCN': 'S', 'TCR': 'S', 'TCY': 'S', 'TCS': 'S', 'TCW': 'S', 'TCK': 'S', 'TCM': 'S', 'TCB': 'S', 'TCD': 'S', 'TCH': 'S', 'TCV': 'S',
-        'TTC': 'F', 'TTT': 'F', 'TTA': 'L', 'TTG': 'M', 'TTY': 'F',
-        'TAC': 'Y', 'TAT': 'Y', 'TAA': '*', 'TAG': '*',
-        'TGC': 'C', 'TGT': 'C', 'TGA': '*', 'TGG': 'W',
-    }
-
-    table = {
-        'ATA': 'I', 'ATC': 'I', 'ATT': 'I', 'ATG': 'M', 'ATY': 'I', 'ATH': 'I', 'ATW': 'I', 'ATM': 'I',
-        'ACA': 'T', 'ACC': 'T', 'ACG': 'T', 'ACT': 'T', 'ACN': 'T', 'ACR': 'T', 'ACY': 'T', 'ACS': 'T', 'ACW': 'T', 'ACK': 'T', 'ACM': 'T', 'ACB': 'T', 'ACD': 'T', 'ACH': 'T', 'ACV': 'T',
-        'AAC': 'N', 'AAT': 'N', 'AAA': 'K', 'AAG': 'K', 'AAY': 'N', 'AAR': 'K',
-        'AGC': 'S', 'AGT': 'S', 'AGA': 'R', 'AGG': 'R', 'AGY': 'S', 'AGR': 'R',
-        'CTA': 'L', 'CTC': 'L', 'CTG': 'L', 'CTT': 'L', 'CTN': 'L', 'CTR': 'L', 'CTY': 'L', 'CTS': 'L', 'CTW': 'L', 'CTK': 'L', 'CTM': 'L', 'CTB': 'L', 'CTD': 'L', 'CTH': 'L', 'CTV': 'L',
-        'CCA': 'P', 'CCC': 'P', 'CCG': 'P', 'CCT': 'P', 'CCN': 'P', 'CCR': 'P', 'CCY': 'P', 'CCS': 'P', 'CCW': 'P', 'CCK': 'P', 'CCM': 'P', 'CCB': 'P', 'CCD': 'P', 'CCH': 'P', 'CCV': 'P',
-        'CAC': 'H', 'CAT': 'H', 'CAA': 'Q', 'CAG': 'Q', 'CAY': 'H', 'CAR': 'Q',
-        'CGA': 'R', 'CGC': 'R', 'CGG': 'R', 'CGT': 'R', 'CGN': 'R', 'CGR': 'R', 'CGY': 'R', 'CGS': 'R', 'CGW': 'R', 'CGK': 'R', 'CGM': 'R', 'CGB': 'R', 'CGD': 'R', 'CGH': 'R', 'CGV': 'R',
-        'GTA': 'V', 'GTC': 'V', 'GTG': 'V', 'GTT': 'V', 'GTN': 'V', 'GTR': 'V', 'GTY': 'V', 'GTS': 'V', 'GTW': 'V', 'GTK': 'V', 'GTM': 'V', 'GTB': 'V', 'GTD': 'V', 'GTH': 'V', 'GTV': 'V',
-        'GCA': 'A', 'GCC': 'A', 'GCG': 'A', 'GCT': 'A', 'GCN': 'A', 'GCR': 'A', 'GCY': 'A', 'GCS': 'A', 'GCW': 'A', 'GCK': 'A', 'GCM': 'A', 'GCB': 'A', 'GCD': 'A', 'GCH': 'A', 'GCV': 'A',
-        'GAC': 'D', 'GAT': 'D', 'GAA': 'E', 'GAG': 'E', 'GAY': 'D', 'GAR': 'E',
-        'GGA': 'G', 'GGC': 'G', 'GGG': 'G', 'GGT': 'G', 'GGN': 'G', 'GGR': 'G', 'GGY': 'G', 'GGS': 'G', 'GGW': 'G', 'GGK': 'G', 'GGM': 'G', 'GGB': 'G', 'GGD': 'G', 'GGH': 'G', 'GGV': 'G',
-        'TCA': 'S', 'TCC': 'S', 'TCG': 'S', 'TCT': 'S', 'TCN': 'S', 'TCR': 'S', 'TCY': 'S', 'TCS': 'S', 'TCW': 'S', 'TCK': 'S', 'TCM': 'S', 'TCB': 'S', 'TCD': 'S', 'TCH': 'S', 'TCV': 'S',
-        'TTC': 'F', 'TTT': 'F', 'TTA': 'L', 'TTG': 'L', 'TTY': 'F', 'TTR': 'L',
-        'TAC': 'Y', 'TAT': 'Y', 'TAA': '*', 'TAG': '*', 'TAR': '*', 'TAY': 'Y',
-        'TGC': 'C', 'TGT': 'C', 'TGA': '*', 'TGG': 'W', 'TGY': 'C',
-    }
     # code:  https: //www.bioinformatics.org/sms/iupac.html
+    start_table = code["start_table"]
+    table = code["trans_table"]
+
     protein = ""
     if len(seq) % 3 == 0:
         protein = start_table[seq[0: 3]]
@@ -151,58 +130,6 @@ def translate(seq):
         raise IndexError(
             "Given sequence length modulo 3 was different than 0, which is unexpected.")
     return protein
-
-
-def is_compressed(file_or_file_path):
-    """
-        Checks is a file, or file path given is compressed or not
-    """
-    file = file_or_file_path
-    if type(file) == str:
-        file = open(file, "rb")
-    else:
-        try:
-            file = open(file.name, "rb")
-        except:
-            return False
-    if file.read(2).startswith(b'\x1f\x8b'):
-        return True
-    file.close()
-    return False
-
-
-def read_compressed_or_not(file_or_file_path):
-    """
-        Reads a file, compressed or not.
-        Copied from http: //www.github.com/ggautreau/PPanGGOLiN.git's utils.py.
-    """
-    file = file_or_file_path
-    if type(file) == str:
-        file = open(file, "rb")
-    else:
-        try:
-            file = open(file.name, "rb")
-        except:
-            return(file)
-    if file.read(2).startswith(b'\x1f\x8b'):
-        file.seek(0)
-        logging.getLogger().info("Uncompressing the file: '" + file.name + "' ...")
-        return(TextIOWrapper(gzip.open(filename=file, mode="r")))
-    else:
-        file.close()
-        file = open(file.name, "r")
-        return(file)
-
-
-def write_compress_or_not(file_path, compress):
-    """
-        Returns a file-like object, compressed or not.
-    """
-    if compress:
-        return gzip.open(file_path + ".gz", mode="wt")
-    else:
-        return open(file_path, "w")
-
 
 def launch_aragorn(fnaFile, locustag):
     """ 
@@ -233,20 +160,20 @@ def launch_aragorn(fnaFile, locustag):
                                  strand="-" if lineData[2].startswith(
                                      "c") else "+",
                                  geneType="tRNA",
-                                 inference="COORDINATES: profile: Aragorn",
+                                 inference="COORDINATES:profile",
                                  product=lineData[1] + lineData[4]))
     logging.getLogger().info(
         f"Done with Aragorn(tRNA). There are {len(geneObjs)} tRNAs.")
     return geneObjs
 
 
-def launch_prodigal(fnaFile, locustag):
+def launch_prodigal(fnaFile, locustag, code):
     """ 
         launches Prodigal to annotate CDS. Takes a fna file name and a locustag to give an ID to the found genes.
         returns the annotated genes in a list of gene objects.
     """
     logging.getLogger().debug("Running Prodigal(CDS).")
-    cmd = ["prodigal", "-f", "sco", "-m", "-c", "-i", fnaFile, "-p", "single", "-q"]
+    cmd = ["prodigal", "-f", "sco","-g",code, "-m", "-c", "-i", fnaFile, "-p", "single", "-q"]
     logging.getLogger().debug(f"command for Prodigal:  '{' '.join(cmd)}'")
     p = Popen(cmd, stdout=PIPE)
 
@@ -268,29 +195,35 @@ def launch_prodigal(fnaFile, locustag):
                                  stop=lineData[2],
                                  strand=lineData[3],
                                  geneType="CDS",
-                                 inference="ab initio prediction: Prodigal"))
+                                 genetic_code=code,
+                                 inference="ab initio prediction"))
 
     logging.getLogger().info(
         f"Done with Prodigal(CDS). There are {len(geneObjs)} CDSs.")
     return geneObjs
 
 
-def launch_infernal(fnaFile, locustag):
+def launch_infernal(fnaFile, locustag, kingdom):
     """ 
         launches Infernal in hmmer-only mode to annotate rRNAs. Takes a fna file name and a locustag to give an ID to the found genes.
         returns the annotated genes in a list of gene objects.
     """
+    if kingdom == "bacteria":
+        modelfile = os.path.dirname(os.path.realpath(__file__)) + "/rRNA_DB/rRNA_bact.cm"
+    elif kingdom == "archaea":
+        modelfile = os.path.dirname(os.path.realpath(__file__)) + "/rRNA_DB/rRNA_arch.cm"
+
     logging.getLogger().debug("Running Infernal(rRNA).")
-    tmpFile = tempfile.NamedTemporaryFile(mode="r")
+    tmpFile = tempfile.NamedTemporaryFile(mode="r", dir = "/dev/shm/")
     cmd = ["cmscan", "--tblout", tmpFile.name, "--hmmonly", "--cpu",
-           str(1), "--noali", f"{os.path.dirname(os.path.realpath(__file__))}/cmDB/rRNA_bact.cm", fnaFile]
+           str(1), "--noali", modelfile, fnaFile]
     logging.getLogger().debug(f"command for Infernal:  '{' '.join(cmd)}'")
     p = Popen(cmd, stdout=open(os.devnull, "w"), stderr=PIPE)
     err = p.communicate()[1].decode().split()
     if err != []:
         if err[0] == 'Error: ':
             raise Exception(
-                f"Infernal (cmscan) failed with error:  '{ ' '.join(err) }'. If you never used this script, you should press the .cm file using cmpress executable from Infernal. You should find the file in '{os.path.dirname(os.path.realpath(__file__))}/cmDB/'.")
+                f"Infernal (cmscan) failed with error:  '{ ' '.join(err) }'. If you never used this script, you should press the .cm file using cmpress executable from Infernal. You should find the file in '{os.path.dirname(os.path.realpath(__file__))}/rRNA_DB/'.")
         raise Exception(
             f"An error occurred with Infernal. Error is:  '{ ' '.join(err) }'.")
     # never managed to test what happens if the .cm files are compressed with a 'bad' version of infernal, so if that happens you are on your own.
@@ -314,14 +247,15 @@ def launch_infernal(fnaFile, locustag):
                                  stop=stop,
                                  strand=strand,
                                  geneType="rRNA",
-                                 product=" ".join(lineData[17:])))
+                                 product=" ".join(lineData[17:]),
+                                 inference="COORDINATES:profile"))
 
     logging.getLogger().info(
         f"Done with Infernal(rRNA). There are {len(geneObjs)} rRNAs.")
     return geneObjs
 
 
-def write_output(outputbasename, contigs, genes, compress, format, cpu, versions):
+def write_output(outputbasename, contigs, genes, compress, format, cpu, versions, code):
     """
         Writes output file in the given formats.
         Takes in the basename for the output
@@ -344,8 +278,9 @@ def write_output(outputbasename, contigs, genes, compress, format, cpu, versions
                 wffn = p.apply_async(func=write_ffn, args=(
                     outputbasename, contigs, genes, compress))
             elif forms == "faa":
+                translation_table = genetic_codes(code)
                 wfaa = p.apply_async(func=write_faa, args=(
-                    outputbasename, contigs, genes, compress))
+                    outputbasename, contigs, genes, compress, translation_table))
 
         # there is a better way of writing this 'wait until all processes are done', isn't there ?
         for forms in format.split(","):
@@ -397,9 +332,9 @@ def write_gff(output, contigs, genes, compress, versions):
     for contig in sorted(contigs.keys(), key = lambda x : len(contigs[x])):#biggest contig first.
         outfile.write(
             f"##sequence-region {contig} 1 {len(contigs[contig])}\n")
-        # GenBank origin is only for PanGBank. The circularity could be guessed with a gbff input.
+        #The circularity could be presumed with a gbff input...
         outfile.write(
-            f"{contig}\tGenBank\tregion\t1\t{len(contigs[contig])}\t.\t+\t.\tID={contig}\n")
+            f"{contig}\tsynta:{__version__}\tregion\t1\t{len(contigs[contig])}\t.\t+\t.\tID={contig}\n")
         for gene in contig2genes[contig]:
             outfile.write(gene.get_gff(versions))
     outfile.close()
@@ -411,7 +346,7 @@ def write_ffn(output, contigs, genes, compress):
         Writes a ffn formated file.
     """
     logging.getLogger().debug("Writting FFN file ...")
-    outfile = write_compress_or_not(output + ".fnn", compress)
+    outfile = write_compress_or_not(output + ".ffn", compress)
     for gene in genes:
         # ffn is only for coding sequences ! (even if some softs also include RNA sequences ... It was not designed as such)
         if gene.type == "CDS":
@@ -425,7 +360,7 @@ def write_ffn(output, contigs, genes, compress):
     logging.getLogger().debug("Done writing FFN file.")
 
 
-def write_faa(output, contigs, genes, compress):
+def write_faa(output, contigs, genes, compress, code):
     """
         Writes a faa formated file.
     """
@@ -435,10 +370,10 @@ def write_faa(output, contigs, genes, compress):
         if gene.type == "CDS":  # faa is only for coding sequences !
             if gene.strand == "+":
                 outfile.write(gene.get_faa(
-                    contigs[gene.contig][gene.start-1: gene.stop]))
+                    contigs[gene.contig][gene.start-1: gene.stop], code))
             elif gene.strand == "-":
                 outfile.write(gene.get_faa(reverse_complement(
-                    contigs[gene.contig][gene.start-1: gene.stop])))
+                    contigs[gene.contig][gene.start-1: gene.stop]), code))
     outfile.close()
     logging.getLogger().debug("Done writing FAA file.")
 
@@ -465,7 +400,7 @@ def write_tmp_fasta(contigs):
 
         This is for the cases where the given file is compressed, then we write a temporary file for the annotation tools to read from. The file will be deleted when close() is called.
     """
-    tmpFile = tempfile.NamedTemporaryFile(mode="w")
+    tmpFile = tempfile.NamedTemporaryFile(mode="w", dir = "/dev/shm/")
     for header in contigs.keys():
         tmpFile.write(f">{header}\n")
         logging.getLogger().debug(
@@ -478,7 +413,7 @@ def write_tmp_fasta(contigs):
     return tmpFile
 
 
-def syntaxic_annotation(fastaFile, cpu, norna, locustag):
+def syntaxic_annotation(fastaFile, cpu, norna, locustag, kingdom, code):
     """
         Runs the different softwares for the syntaxic annotation.
 
@@ -494,14 +429,14 @@ def syntaxic_annotation(fastaFile, cpu, norna, locustag):
     with Pool(processes=cpu) as p:  # launching a process pool with all the accessible processes
 
         proGenes = p.apply_async(func=launch_prodigal,
-                                 args=(fastaFile.name, locustag))
+                                 args=(fastaFile.name, locustag, code))
         logging.getLogger().debug("Started the process launching Prodigal")
         if not norna:
             araGenes = p.apply_async(
                 func=launch_aragorn, args=(fastaFile.name, locustag))
             logging.getLogger().debug("Started the process launching Aragorn")
             infGenes = p.apply_async(
-                func=launch_infernal, args=(fastaFile.name, locustag))
+                func=launch_infernal, args=(fastaFile.name, locustag, kingdom))
             logging.getLogger().debug("Started the process launching Infernal")
             genes.extend(araGenes.get())
             logging.getLogger().debug("Got the results from the process for Aragorn")
@@ -785,34 +720,34 @@ def cmdLine():
     """
         Functions that defines the command line arguments.
     """
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--fna',  required=False, type=str,
-                        help="fasta(.gz) file to annotate. Will be used if given.")
-    parser.add_argument('--gbff', required=False, type=str,
-                        help=".gbff (or .gbk) file to annotate."
-                        " sequence will be used if no fna files are given.")
-    parser.add_argument('--overlap', required=False, action='store_false',
-                        default=True, help="Use to not remove genes overlapping with RNA features.")
-    parser.add_argument('--compress', required=False, action='store_true',
-                        default=False, help="Use to compress the output files.")
-    parser.add_argument('--output', required=False, type=str, default="synta_outputdir"+time.strftime(
-        "_DATE%Y-%m-%d_HOUR%H.%M.%S", time.localtime())+"_PID"+str(os.getpid()), help="Output directory path (optionnal)")
-    parser.add_argument("--locustag", required=False, type=str,
-                        help="Locustag to use for feature ID. If not provided, it will use generic random string IDs of length 12.")
-    parser.add_argument("--basename", required=False, type=str,
-                        help="Basename to use for output files. If not provided, it will be guessed from the input file name.")
-    parser.add_argument("--norna", required=False, action="store_true",
-                        default=False, help="Use to avoid annotating RNA features.")
-    parser.add_argument("--cpu", required=False, type=int,
-                        default=1, help="Number of cpus to use.")
-    parser.add_argument("--format", required=False, type=str.lower, default="gff",
-                        help="Different formats that you want as output, separated by a ','. Accepted strings are:  faa fna gff ffn.")
-    parser.add_argument("--verbose", required=False, action="store_true",
-                        default=False, help="Use to see the DEBUG log, which outputs uppon")
-    parser.add_argument("--compare", required=False, action="store_true",
-                        default=False, help="Use to link database references from the gbff to our annotations.")
-    parser.add_argument('--version', action='version',
-                        version='%(prog)s ' + __version__)
+    parser = argparse.ArgumentParser(description = "Quickly annotates CDS, rRNA and tRNA genes in prokaryote genomes", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    
+
+    required = parser.add_argument_group(title = "Required arguments", description = "One of the following arguments is required :")
+
+    required.add_argument('--fna',  required=False, type=str, help="fasta(.gz) file to annotate. Will be used in priority if given.")
+    required.add_argument('--gbff', required=False, type=str, help=".gbff (or .gbk) file to annotate. The sequence will be used if no fna files are given.")
+    
+    expert = parser.add_argument_group(title = "Expert options")
+    expert.add_argument('--overlap', required=False, action='store_false',default=True, help="Use to not remove genes overlapping with RNA features.")
+    expert.add_argument("--norna", required=False, action="store_true", default=False, help="Use to avoid annotating RNA features.")
+    expert.add_argument("--kingdom",required = False, type = str.lower, default = "bacteria", choices = ["bacteria","archaea"], help = "Kingdom to which the prokaryota belongs to, to know which models to use for rRNA annotation.")
+    expert.add_argument("--compare", required=False, action="store_true", default=False, help="Use to link database references from the gbff to our annotations.")
+    expert.add_argument("--translation_table",required=False, default="11", help = "Translation table to use for gene calling.")
+    outlog = parser.add_argument_group(title = "Output and formating")
+    outlog.add_argument('--compress', required=False, action='store_true',default=False, help="Compress the output files using gzip.")
+    outlog.add_argument('--output', required=False, type=str, default="synta_outputdir"+time.strftime("_DATE%Y-%m-%d_HOUR%H.%M.%S", time.localtime())+"_PID"+str(os.getpid()), help="Output directory path (optionnal)")
+    outlog.add_argument("--format", required=False, type=str.lower, default="gff", help="Different formats that you want as output, separated by a ','. Accepted strings are:  faa fna gff ffn.")
+    outlog.add_argument("--locustag", required=False, type=str, help="Locustag to use for feature ID. If not provided, it will use generic random string IDs of length 12.")
+    outlog.add_argument("--basename", required=False, type=str, help="Basename to use for output files. If not provided, it will be guessed from the input file name.")
+    outlog.add_argument("--log",required = False, action = "store_true", help = "Save log to file")
+    misc = parser.add_argument_group(title = "Misc options")
+    misc.add_argument("--cpu", required=False, type=int, default=1, help="Number of cpus to use.")
+    misc.add_argument("--verbose", required=False, action="store_true", default=False, help="show the DEBUG log")
+    misc.add_argument('--version', action='version', version='%(prog)s ' + __version__)
+
+    if "argcomplete" in sys.modules:
+        argcomplete.autocomplete(parser)
     args = parser.parse_args()
 
     # if any of them is not none, it's good.
@@ -832,14 +767,29 @@ def cmdLine():
 
 def main():
     start = time.time()
-    logging.basicConfig(stream=sys.stdout, level=logging.INFO,
-                        format='\n%(asctime)s %(filename)s:l%(lineno)d %(levelname)s\t%(message)s', datefmt='%Y-%m-%d %H:%M:%S')
     args = cmdLine()
 
-    if args.verbose:
-        logging.getLogger().setLevel(logging.DEBUG)
+
+    if not os.path.exists(args.output):
+        os.makedirs(args.output)
+
+    if args.basename:
+        outbasename = os.path.abspath(args.output + "/" + args.basename)
+    elif args.fna:
+        outbasename = mk_basename(args.output, args.fna)
     else:
-        logging.getLogger().setLevel(logging.INFO)
+        outbasename = mk_basename(args.output, args.gbff)
+    if args.verbose:
+        level = logging.DEBUG
+    else:
+        level = logging.INFO
+
+    logging.basicConfig(stream=sys.stdout, level=level, format='%(asctime)s %(filename)s:l%(lineno)d %(levelname)s\t%(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+    if args.log :
+        fhandler = logging.FileHandler(filename = outbasename + ".log",mode = "w")
+        fhandler.setFormatter(logging.Formatter(fmt = "%(asctime)s %(filename)s:l%(lineno)d %(levelname)s\t%(message)s", datefmt='%Y-%m-%d %H:%M:%S'))
+        fhandler.setLevel(level)
+        logging.getLogger().addHandler(fhandler)
     logging.getLogger().info("version: synta " + __version__)
 
     version_numbers = check_versions()
@@ -865,9 +815,8 @@ def main():
         contigs = read_fasta(fastaFile)
         if is_compressed(args.fna):
             fastaFile = write_tmp_fasta(contigs)
-
-    genes = syntaxic_annotation(
-        fastaFile, args.cpu, args.norna, args.locustag)
+    
+    genes = syntaxic_annotation(fastaFile, args.cpu, args.norna, args.locustag, args.kingdom, args.translation_table)
     if args.overlap and not args.norna:
         # sorting and removing CDS that overlap.
         genes = overlap_filter(genes, contigs)
@@ -882,19 +831,9 @@ def main():
         compare_to_gbff(contigs, genes, gbffObjs)
 
     logging.getLogger().info("Writting output files...")
-    if args.basename:
-        outbasename = os.path.abspath(
-            args.output + "/" + args.basename)
-    elif args.fna:
-        outbasename = mk_basename(args.output, args.fna)
-    else:
-        outbasename = mk_basename(args.output, args.gbff)
-
-    if not os.path.exists(args.output):
-        os.makedirs(args.output)
 
     write_output(outbasename, contigs, genes, args.compress,
-                 args.format, args.cpu, version_numbers)
+                 args.format, args.cpu, version_numbers, args.translation_table)
 
     logging.getLogger().info(
         f"There is a total of {len(genes)} annotated features.")

@@ -1,4 +1,4 @@
-INFERNAL1/a [1.1.2 | July 2016]
+INFERNAL1/a [1.1 | October 2013]
 NAME     5S_rRNA
 ACC      RF00001
 DESC     5S ribosomal RNA
@@ -492,10 +492,10 @@ CM
                                              [ END    90 ]      -      - - - - -
      E   365   364 3    -1     0     0     0     0     0                                                 
 //
-HMMER3/f [3.1b3 | July 2016]
+HMMER3/f [i1.1 | October 2013]
 NAME  5S_rRNA
 ACC   RF00001
-DESC  5S ribosomal RNA
+DESC     5S ribosomal RNA
 LENG  119
 MAXL  305
 ALPH  RNA
@@ -875,7 +875,7 @@ HMM          A        C        G        U
           1.38629  1.38629  1.38629  1.38629
           0.00998  4.61210        *  1.46634  0.26236  0.00000        *
 //
-INFERNAL1/a [1.1.2 | July 2016]
+INFERNAL1/a [1.1 | October 2013]
 NAME     SSU_rRNA_bacteria
 ACC      RF00177
 DESC     Bacterial small subunit ribosomal RNA
@@ -6867,10 +6867,10 @@ CM
                                              [ END  1196 ]      -      - - - - -
      E  4757  4756 3    -1     0     0     0     0     0                                                 
 //
-HMMER3/f [3.1b3 | July 2016]
+HMMER3/f [i1.1 | October 2013]
 NAME  SSU_rRNA_bacteria
 ACC   RF00177
-DESC  Bacterial small subunit ribosomal RNA
+DESC     Bacterial small subunit ribosomal RNA
 LENG  1533
 MAXL  1921
 ALPH  RNA
@@ -11492,7 +11492,7 @@ HMM          A        C        G        U
           1.38629  1.38629  1.38629  1.38629
           0.02543  3.68467        *  1.46634  0.26236  0.00000        *
 //
-INFERNAL1/a [1.1.2 | July 2016]
+INFERNAL1/a [1.1 | October 2013]
 NAME     LSU_rRNA_bacteria
 ACC      RF02541
 DESC     Bacterial large subunit ribosomal RNA
@@ -15529,7 +15529,7 @@ CM
     IL  3163  3163 5  3163     6     1     2    55    74  -2.579  -2.842  -0.760  -4.497  -5.274  -4.934  0.000  0.000  0.000  0.000 
     IR  3164  3164 6  3164     5     1     2    54    73  -2.408  -0.496  -5.920  -4.087  -5.193          0.000  0.000  0.000  0.000 
                                              [ MATP  814 ]   1985   2024 g c - -
-    MP  3165  3164 6  3169     4     2     3    53    72  -6.694  -6.901  -0.064  -5.315                 -2.005 -1.522 -2.264  1.559 -2.494 -3.212  1.270 -2.772 -2.547  2.223 -3.047 -0.000  1.052 -2.502 -0.221 -1.569 
+    MP  3165  3164 6  3169     4     2     3    53    72  -6.694  -6.901  -0.064  -5.315                 -2.005 -1.522 -2.264  1.559 -2.494 -3.212  1.270 -2.772 -2.547  2.223 -3.047  0.000  1.052 -2.502 -0.221 -1.569 
     ML  3166  3164 6  3169     4     1     1    53    73  -3.758  -3.940  -0.507  -2.670                  0.368 -0.385 -0.191  0.094 
     MR  3167  3164 6  3169     4     1     1    53    72  -4.809  -3.838  -1.706  -0.766                  0.368 -0.385 -0.191  0.094 
      D  3168  3164 6  3169     4     0     0    52    71  -4.568  -4.250  -2.265  -0.520                 
@@ -23019,10 +23019,10 @@ CM
                                              [ END  2360 ]      -      - - - - -
      E  9128  9127 3    -1     0     0     0     0     0                                                 
 //
-HMMER3/f [3.1b3 | July 2016]
+HMMER3/f [i1.1 | October 2013]
 NAME  LSU_rRNA_bacteria
 ACC   RF02541
-DESC  Bacterial large subunit ribosomal RNA
+DESC     Bacterial large subunit ribosomal RNA
 LENG  2925
 MAXL  5738
 ALPH  RNA
