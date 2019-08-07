@@ -29,12 +29,12 @@ def read_compressed_or_not(file_or_file_path):
         Copied from http: //www.github.com/ggautreau/PPanGGOLiN.git's utils.py.
     """
     file = file_or_file_path
-    if type(file) == str:
+    if isinstance(file, str):
         file = open(file, "rb")
     else:
         try:
             file = open(file.name, "rb")
-        except:
+        except AttributeError:
             return(file)
     if file.read(2).startswith(b'\x1f\x8b'):
         file.seek(0)
