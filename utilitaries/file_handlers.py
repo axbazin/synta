@@ -10,7 +10,7 @@ def is_compressed(file_or_file_path):
         Checks is a file, or file path given is compressed or not
     """
     file = file_or_file_path
-    if type(file) == str:
+    if isinstance(file, str):
         file = open(file, "rb")
     else:
         try:

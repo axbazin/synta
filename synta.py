@@ -166,7 +166,7 @@ def launch_aragorn(fnaFile, locustag):
 
 
 def launch_prodigal(fnaFile, locustag, code):
-    """ 
+    """
         launches Prodigal to annotate CDS. Takes a fna file name and a locustag to give an ID to the found genes.
         returns the annotated genes in a list of gene objects.
     """
@@ -281,7 +281,7 @@ def write_output(outputbasename, contigs, genes, compress, formats, cpu, version
                     outputbasename, contigs, genes, compress, translation_table))
 
         # there is a better way of writing this 'wait until all processes are done', isn't there ?
-        for forms in format.split(","):
+        for forms in formats.split(","):
             if forms == "gff":
                 wgff.get()
             elif forms == "fna":
@@ -721,13 +721,13 @@ def cmdLine():
         Functions that defines the command line arguments.
     """
     parser = argparse.ArgumentParser(description = "Quickly annotates CDS, rRNA and tRNA genes in prokaryote genomes", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    
+
 
     required = parser.add_argument_group(title = "Required arguments", description = "One of the following arguments is required :")
 
     required.add_argument('--fna',  required=False, type=str, help="fasta(.gz) file to annotate. Will be used in priority if given.")
     required.add_argument('--gbff', required=False, type=str, help=".gbff (or .gbk) file to annotate. The sequence will be used if no fna files are given.")
-    
+
     expert = parser.add_argument_group(title = "Expert options")
     expert.add_argument('--overlap', required=False, action='store_false',default=True, help="Use to not remove genes overlapping with RNA features.")
     expert.add_argument("--norna", required=False, action="store_true", default=False, help="Use to avoid annotating RNA features.")
