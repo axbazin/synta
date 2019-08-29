@@ -26,8 +26,8 @@ except ImportError:
     pass
 
 #own scripts
-from utilitaries.genetic_codes import genetic_codes
-from utilitaries.file_handlers import is_compressed, read_compressed_or_not, write_compress_or_not
+from synta.utilitaries.genetic_codes import genetic_codes
+from synta.utilitaries.file_handlers import is_compressed, read_compressed_or_not, write_compress_or_not
 
 
 
@@ -745,6 +745,10 @@ def cmdLine():
     misc.add_argument("--cpu", required=False, type=int, default=1, help="Number of cpus to use.")
     misc.add_argument("--verbose", required=False, action="store_true", default=False, help="show the DEBUG log")
     misc.add_argument('--version', action='version', version='%(prog)s ' + pkg_resources.get_distribution("synta").version)
+
+    if len(sys.argv) == 1:
+        parser.print_help()
+        sys.exit(1)
 
     if "argcomplete" in sys.modules:
         argcomplete.autocomplete(parser)
