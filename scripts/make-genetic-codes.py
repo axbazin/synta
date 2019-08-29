@@ -48,7 +48,7 @@ class genetic_code:
         self.translation_table = extend_trans_tables(self.trans_table)
         self.start_translation_table = extend_trans_tables(self.start_table)
 
-def extend_trans_tables( table):
+def extend_trans_tables(table):
         """
             Greedily testing every combination to see if all the string they mean give the same amino acid.
         """

@@ -15,7 +15,7 @@ def is_compressed(file_or_file_path):
     else:
         try:
             file = open(file.name, "rb")
-        except:
+        except AttributeError:
             return False
     if file.read(2).startswith(b'\x1f\x8b'):
         return True
