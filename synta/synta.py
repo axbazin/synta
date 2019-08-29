@@ -2,6 +2,9 @@
 #coding : utf-8
 #PYTHON_ARGCOMPLETE_OK
 
+# minimum python version to use is 3.6
+import sys
+assert sys.version_info >= (3, 6)
 
 import pkg_resources
 from string import ascii_uppercase
@@ -14,7 +17,6 @@ import argparse
 import time
 import os
 import logging
-import sys
 from collections import defaultdict
 
 #flavor package, not required.
@@ -27,8 +29,6 @@ except ImportError:
 from utilitaries.genetic_codes import genetic_codes
 from utilitaries.file_handlers import is_compressed, read_compressed_or_not, write_compress_or_not
 
-# minimum python version to use is 3.6, there are features that don't work with older versions in this code. (most notably, f-strings)
-assert sys.version_info >= (3, 6)
 
 
 class gene:
