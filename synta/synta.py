@@ -2,8 +2,8 @@
 #coding : utf-8
 #PYTHON_ARGCOMPLETE_OK
 
-__version__ = "0.2.3"
 
+import pkg_resources
 from string import ascii_uppercase
 from random import choice
 import ast
@@ -744,7 +744,7 @@ def cmdLine():
     misc = parser.add_argument_group(title = "Misc options")
     misc.add_argument("--cpu", required=False, type=int, default=1, help="Number of cpus to use.")
     misc.add_argument("--verbose", required=False, action="store_true", default=False, help="show the DEBUG log")
-    misc.add_argument('--version', action='version', version='%(prog)s ' + __version__)
+    misc.add_argument('--version', action='version', version='%(prog)s ' + pkg_resources.get_distribution("synta").version)
 
     if "argcomplete" in sys.modules:
         argcomplete.autocomplete(parser)
