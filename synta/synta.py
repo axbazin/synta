@@ -2,21 +2,21 @@
 #coding : utf-8
 #PYTHON_ARGCOMPLETE_OK
 
-__version__ = "0.2.3"
+# minimum python version to use is 3.6
+import sys
+assert sys.version_info >= (3, 6)
 
+import pkg_resources
 from string import ascii_uppercase
 from random import choice
 import ast
 import tempfile
 from subprocess import Popen, PIPE
 from multiprocessing import Pool
-from io import TextIOWrapper
 import argparse
-import gzip
 import time
 import os
 import logging
-import sys
 from collections import defaultdict
 
 #flavor package, not required.
@@ -26,11 +26,9 @@ except ImportError:
     pass
 
 #own scripts
-from utilitaries.genetic_codes import genetic_codes
-from utilitaries.file_handlers import is_compressed, read_compressed_or_not, write_compress_or_not
+from synta.utilitaries.genetic_codes import genetic_codes
+from synta.utilitaries.file_handlers import is_compressed, read_compressed_or_not, write_compress_or_not
 
-# minimum python version to use is 3.6, there are features that don't work with older versions in this code. (most notably, f-strings)
-assert sys.version_info >= (3, 6)
 
 
 class gene:
@@ -168,7 +166,7 @@ def launch_aragorn(fnaFile, locustag):
 
 
 def launch_prodigal(fnaFile, locustag, code):
-    """ 
+    """
         launches Prodigal to annotate CDS. Takes a fna file name and a locustag to give an ID to the found genes.
         returns the annotated genes in a list of gene objects.
     """
@@ -204,9 +202,9 @@ def launch_prodigal(fnaFile, locustag, code):
 
 
 def launch_infernal(fnaFile, locustag, kingdom):
-    """ 
+    """
         launches Infernal in hmmer-only mode to annotate rRNAs. Takes a fna file name and a locustag to give an ID to the found genes.
-        returns the annotated genes in a list of gene objects.
+        returns the annotated genes in a list of gene objects
     """
     if kingdom == "bacteria":
         modelfile = os.path.dirname(os.path.realpath(__file__)) + "/rRNA_DB/rRNA_bact.cm"
@@ -255,7 +253,7 @@ def launch_infernal(fnaFile, locustag, kingdom):
     return geneObjs
 
 
-def write_output(outputbasename, contigs, genes, compress, format, cpu, versions, code):
+def write_output(outputbasename, contigs, genes, compress, formats, cpu, versions, code):
     """
         Writes output file in the given formats.
         Takes in the basename for the output
@@ -267,7 +265,7 @@ def write_output(outputbasename, contigs, genes, compress, format, cpu, versions
         the version strings for the different softwares. (obtained with check_versions() )
     """
     with Pool(processes=cpu) as p:
-        for forms in format.split(","):
+        for forms in formats.split(","):
             if forms == "gff":
                 wgff = p.apply_async(func=write_gff, args=(
                     outputbasename, contigs, genes, compress, versions))
@@ -283,7 +281,7 @@ def write_output(outputbasename, contigs, genes, compress, format, cpu, versions
                     outputbasename, contigs, genes, compress, translation_table))
 
         # there is a better way of writing this 'wait until all processes are done', isn't there ?
-        for forms in format.split(","):
+        for forms in formats.split(","):
             if forms == "gff":
                 wgff.get()
             elif forms == "fna":
@@ -487,8 +485,8 @@ def mk_basename(output, afile):
 
 def check_versions():
     """
-        Checks if the programs we need exist in the PATH, and their version number. 
-        Returns a dictionnary with the type of annotated genes as key, and a tuple with the version string and the software name as value.
+        Checks if the programs we need exist in the PATH, and their version number
+        Returns a dictionnary with the type of annotated genes as key, and a tuple with the version string and the software name as value
     """
     logging.getLogger().info("Checking software versions")
     try:
@@ -554,14 +552,16 @@ def read_gbff(gbffFile):
         protein_id = ""
         locus_tag = ""
         usefulInfo = False
+        start = None
+        end = None
+        strand = None
         line = lines.pop()
         while not line.startswith("ORIGIN"):
             currType = line[5:21].strip()
             if currType != "":
                 # anything needs a locus tag (in the format description)
                 if usefulInfo:
-                    newGene = gene(protein_id, contigID,
-                                   start, end, strand, objType)
+                    newGene = gene(protein_id, contigID, start, end, strand, objType)
                     newGene.saveDBinfo(dbxref, locus_tag, protein_id)
                     geneObjs.append(newGene)
                 usefulInfo = False
@@ -721,13 +721,13 @@ def cmdLine():
         Functions that defines the command line arguments.
     """
     parser = argparse.ArgumentParser(description = "Quickly annotates CDS, rRNA and tRNA genes in prokaryote genomes", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    
+
 
     required = parser.add_argument_group(title = "Required arguments", description = "One of the following arguments is required :")
 
     required.add_argument('--fna',  required=False, type=str, help="fasta(.gz) file to annotate. Will be used in priority if given.")
     required.add_argument('--gbff', required=False, type=str, help=".gbff (or .gbk) file to annotate. The sequence will be used if no fna files are given.")
-    
+
     expert = parser.add_argument_group(title = "Expert options")
     expert.add_argument('--overlap', required=False, action='store_false',default=True, help="Use to not remove genes overlapping with RNA features.")
     expert.add_argument("--norna", required=False, action="store_true", default=False, help="Use to avoid annotating RNA features.")
@@ -744,7 +744,11 @@ def cmdLine():
     misc = parser.add_argument_group(title = "Misc options")
     misc.add_argument("--cpu", required=False, type=int, default=1, help="Number of cpus to use.")
     misc.add_argument("--verbose", required=False, action="store_true", default=False, help="show the DEBUG log")
-    misc.add_argument('--version', action='version', version='%(prog)s ' + __version__)
+    misc.add_argument('--version', action='version', version='%(prog)s ' + pkg_resources.get_distribution("synta").version)
+
+    if len(sys.argv) == 1:
+        parser.print_help()
+        sys.exit(1)
 
     if "argcomplete" in sys.modules:
         argcomplete.autocomplete(parser)
@@ -801,10 +805,10 @@ def main():
             "Reading the dna sequences and the gene informations from the gbff file.")
         gbffObjs, contigs = read_gbff(gbffFile)
         fastaFile = write_tmp_fasta(contigs)
-    elif args.compare:  # args.fna is not none
+    elif args.compare:# args.fna is not none
         logging.getLogger().info("Reading the gene informations from the gbff file.")
         gbffObjs, _ = read_gbff(gbffFile)
-    elif args.fna is None:  # there will be no comparisons.
+    elif args.fna is None:# there will be no comparisons.
         logging.getLogger().info("Reading the dna sequences from the gbff file.")
         _, contigs = read_gbff(gbffFile)
         fastaFile = write_tmp_fasta(contigs)
@@ -815,7 +819,7 @@ def main():
         contigs = read_fasta(fastaFile)
         if is_compressed(args.fna):
             fastaFile = write_tmp_fasta(contigs)
-    
+
     genes = syntaxic_annotation(fastaFile, args.cpu, args.norna, args.locustag, args.kingdom, args.translation_table)
     if args.overlap and not args.norna:
         # sorting and removing CDS that overlap.

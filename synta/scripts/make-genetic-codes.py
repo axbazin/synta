@@ -39,7 +39,16 @@ class genetic_code:
             self.trans_table[self.bases[0][i] + self.bases[1][i] + self.bases[2][i]] = self.base_table[i]
             self.start_table[self.bases[0][i] + self.bases[1][i] + self.bases[2][i]] = self.start[i]
 
-    def extend_trans_tables(self, table):
+    def compute(self):
+        """
+            Computes the translation tables of this genetic code.
+        """
+        self.assign_codons_start()
+        self.make_trans_table()
+        self.translation_table = extend_trans_tables(self.trans_table)
+        self.start_translation_table = extend_trans_tables(self.start_table)
+
+def extend_trans_tables(table):
         """
             Greedily testing every combination to see if all the string they mean give the same amino acid.
         """
@@ -63,15 +72,6 @@ class genetic_code:
                 new_trans_table["".join(comb)] = resulting_aa.pop()#there is only one.
 
         return new_trans_table
-
-    def compute(self):
-        """
-            Computes the translation tables of this genetic code.
-        """
-        self.assign_codons_start()
-        self.make_trans_table()
-        self.translation_table = self.extend_trans_tables(self.trans_table)
-        self.start_translation_table = self.extend_trans_tables(self.start_table)
 
 def read_prt_file(filename):
     genetic_codes = {}
