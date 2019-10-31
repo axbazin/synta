@@ -29,7 +29,7 @@ except ImportError:
 from synta.utilitaries.genetic_codes import genetic_codes
 from synta.utilitaries.file_handlers import is_compressed, read_compressed_or_not, write_compress_or_not
 
-
+__version__ = pkg_resources.get_distribution("synta").version
 
 class gene:
     def __init__(self, ID, contig, start, stop, strand, geneType, genetic_code = None, product=None, inference=None):
