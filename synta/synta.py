@@ -141,7 +141,8 @@ class gene:
         elif self.type == "tRNA":
             gbkLine += " " * 5 + "tRNA" + " " * 12 + pos_line + "\n"
             gbkLine += addString('/db_xref="synote:' + self.ID + '"\n')
-        gbkLine += self.mkGbkTrsl(protSequence)
+        if protSequence is not None:
+            gbkLine += self.mkGbkTrsl(protSequence)
         return gbkLine
 
 def reverse_complement(seq):
@@ -390,6 +391,7 @@ def write_gbff(output, contigs, genes, compress, code):
         outfile.write(' ' * 21 + '/organism="unspecified"\n')
 
         for gene in contig2genes[contig]:
+            seq=None
             if gene.type == "CDS":
                 if gene.strand == "+":
                     seq = translate(contigs[contig][gene.start-1: gene.stop], code)
@@ -570,9 +572,9 @@ def mk_basename(output, afile):
     if output[-1] != "/":
         outbasename += "/"
     if is_compressed(afile):
-        outbasename += "".join(os.path.basename(afile).split(".")[: -2])
+        outbasename += ".".join(os.path.basename(afile).split(".")[: -2])
     else:
-        outbasename += "".join(os.path.basename(afile).split(".")[: -1])
+        outbasename += ".".join(os.path.basename(afile).split(".")[: -1])
     return outbasename
 
 
