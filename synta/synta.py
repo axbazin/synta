@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 #coding : utf-8
-#PYTHON_ARGCOMPLETE_OK
 
 # minimum python version to use is 3.6
 import sys
@@ -20,12 +19,6 @@ import os
 import logging
 from collections import defaultdict
 import datetime
-
-#flavor package, not required.
-try:
-    import argcomplete
-except ImportError:
-    pass
 
 #own scripts
 from synta.utilitaries.genetic_codes import genetic_codes
@@ -815,7 +808,7 @@ def cmdLine():
     """
         Functions that defines the command line arguments.
     """
-    parser = argparse.ArgumentParser(description = "Quickly annotates CDS, rRNA and tRNA genes in prokaryote genomes", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser = argparse.ArgumentParser(description = "Quickly finds ORF, rRNA and tRNA genes in prokaryote genomes", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
 
     required = parser.add_argument_group(title = "Required arguments", description = "One of the following arguments is required :")
@@ -845,8 +838,6 @@ def cmdLine():
         parser.print_help()
         sys.exit(1)
 
-    if "argcomplete" in sys.modules:
-        argcomplete.autocomplete(parser)
     args = parser.parse_args()
 
     # if any of them is not none, it's good.
