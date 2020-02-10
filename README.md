@@ -17,6 +17,14 @@ or
 You will need to have the dependencies in your PATH, they are listed in the 'requirements.txt' file.
 If you run synta without one of those dependencies, it will tell you which is missing.
 
+# requirements
+It should run easily on macOS and linux.
+It requires :
+- python >= 3.6
+- prodigal
+- infernal
+- aragorn
+
 # Basic usage
 
 The simplest command is :
