@@ -23,9 +23,9 @@ The simplest command is :
 `synta --fna MY_FASTA_FILE`
 
 This command will use a single cpu and write a gff3 formated file as output.
-If you are annotating a single genome, using more cpus will make it faster. A maximum of 5 cpus will be used at once so providing more is useless.
+Using one more cpu will make it faster. Providing with even more does not make it much faster.
 
-`synta --fna MY_FASTA_FILE --cpu 5`
+`synta --fna MY_FASTA_FILE --cpu 2`
 
 If you need other file formats, there are 5 of them that are currently provided : fna, faa, ffn, gff and gbff.
 To obtain them, use the --format option by listing the formats that you want, separated by a comma, as such :
