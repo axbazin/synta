@@ -23,9 +23,9 @@ jobs:
     - uses: actions/checkout@v2
     - uses: goanpeca/setup-miniconda@v1.0.2
       with:
+           condarc-file: .condarc.yml
            activate-environment: test
            python-version: 3.6
-           channels: conda-forge,bioconda
     # Runs a single command using the runners shell
     - name: Set up test environment
       run: conda install --file requirements.txt
