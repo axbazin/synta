@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 #coding : utf-8
-#PYTHON_ARGCOMPLETE_OK
 
 # minimum python version to use is 3.6
 import sys
 assert sys.version_info >= (3, 6)
 
+#default packages
 import pkg_resources
 from string import ascii_uppercase
 from random import choice
@@ -18,18 +18,13 @@ import time
 import os
 import logging
 from collections import defaultdict
-
-#flavor package, not required.
-try:
-    import argcomplete
-except ImportError:
-    pass
+import datetime
 
 #own scripts
 from synta.utilitaries.genetic_codes import genetic_codes
 from synta.utilitaries.file_handlers import is_compressed, read_compressed_or_not, write_compress_or_not
 
-
+__version__ = pkg_resources.get_distribution("synta").version
 
 class gene:
     def __init__(self, ID, contig, start, stop, strand, geneType, genetic_code = None, product=None, inference=None):
@@ -94,6 +89,54 @@ class gene:
             j += 60
         return seq
 
+    def mkGbkTrsl(self, protSequence):
+        """
+        Makes the /translation field of gbk files.
+        """
+        trslLine = ' ' * 21 + '/translation="'
+        if len(protSequence) <= 44:
+            trslLine += protSequence + '"\n'
+        else:
+            trslLine += protSequence[0:44] + "\n"
+            j = 44
+            while j < len(protSequence):
+                if j + 59 > len(protSequence):
+                    trslLine += ' ' * 21 + protSequence[j:j+58] ## taking advantage of the index lookout "bug" in python.
+                else:
+                    trslLine += ' ' * 21 + protSequence[j:j+58] + '\n'
+                j = j + 58
+            trslLine += '"\n'
+        return trslLine
+
+    def mkGbkEntry(self, protSequence):
+        """
+        Returns a gbk formated entry of this element.
+        """
+        gbkLine = ""
+        def addString(string):
+            return " " * 21 + string
+        if self.strand == "-":
+            pos_line = "complement(" + str(self.start) + ".." + str(self.stop) + ")"
+        elif self.strand == "+":
+            pos_line = str(self.start) + ".." + str(self.stop)
+        gbkLine += " " * 5 + "gene" + " " * 12 + pos_line + "\n"
+        gbkLine += addString('/db_xref="synote:gene' + self.ID + '"\n')
+        if self.type == "CDS":
+            gbkLine += " " * 5 + "CDS" + " " * 13 + pos_line + "\n"
+            gbkLine += addString('/protein_id="' + self.ID + '"\n')
+            gbkLine += addString('/locus_tag="' + self.ID + '"\n')
+            gbkLine += addString('/transl_table=11\n')
+            gbkLine += addString('/codon_start=1\n')
+
+        elif self.type == "rRNA":
+            gbkLine += " " * 5 + "rRNA" + " " * 12 + pos_line + "\n"
+            gbkLine += addString('/db_xref="synta:' + self.ID + '"\n')
+        elif self.type == "tRNA":
+            gbkLine += " " * 5 + "tRNA" + " " * 12 + pos_line + "\n"
+            gbkLine += addString('/db_xref="synote:' + self.ID + '"\n')
+        if protSequence is not None:
+            gbkLine += self.mkGbkTrsl(protSequence)
+        return gbkLine
 
 def reverse_complement(seq):
     """ reverse complement the given dna sequence """
@@ -108,7 +151,7 @@ def reverse_complement(seq):
 
 
 def translate(seq, code):
-    """ translates the given dna sequence with table code 11 of the ncbi (bacteria)"""
+    """ translates the given dna sequence with the given translation code"""
     # code:  https: //www.bioinformatics.org/sms/iupac.html
     start_table = code["start_table"]
     table = code["trans_table"]
@@ -121,10 +164,8 @@ def translate(seq, code):
             try:
                 protein += table[codon]
             except KeyError:  # codon was not planned for. Probably can't determine it.
-                # print(codon)
                 protein += 'X'  # X is for unknown
     else:
-        print(len(seq))
         raise IndexError(
             "Given sequence length modulo 3 was different than 0, which is unexpected.")
     return protein
@@ -182,7 +223,6 @@ def launch_prodigal(fnaFile, locustag, code):
             for data in line.split(";"):
                 if data.startswith("seqhdr"):
                     header = data.split("=")[1].replace('"', "").split()[0]
-                    # print(header)
 
         elif line.startswith(">"):
             c += 1
@@ -266,6 +306,7 @@ def write_output(outputbasename, contigs, genes, compress, formats, cpu, version
     """
     with Pool(processes=cpu) as p:
         for forms in formats.split(","):
+            translation_table = genetic_codes(code)
             if forms == "gff":
                 wgff = p.apply_async(func=write_gff, args=(
                     outputbasename, contigs, genes, compress, versions))
@@ -276,10 +317,11 @@ def write_output(outputbasename, contigs, genes, compress, formats, cpu, version
                 wffn = p.apply_async(func=write_ffn, args=(
                     outputbasename, contigs, genes, compress))
             elif forms == "faa":
-                translation_table = genetic_codes(code)
                 wfaa = p.apply_async(func=write_faa, args=(
                     outputbasename, contigs, genes, compress, translation_table))
-
+            elif forms == "gbff":
+                wgbff = p.apply_async(func=write_gbff, args=(
+                    outputbasename, contigs, genes, compress, translation_table))
         # there is a better way of writing this 'wait until all processes are done', isn't there ?
         for forms in formats.split(","):
             if forms == "gff":
@@ -290,6 +332,8 @@ def write_output(outputbasename, contigs, genes, compress, formats, cpu, version
                 wffn.get()
             elif forms == "faa":
                 wfaa.get()
+            elif forms == "gbff":
+                wgbff.get()
 
 
 def read_fasta(fnaFile):
@@ -317,11 +361,55 @@ def read_fasta(fnaFile):
     return contigs
 
 
+def write_gbff(output, contigs, genes, compress, code):
+    """
+        Writes a gbff formated file.
+    """
+    logging.getLogger().debug("Writing GBFF file ...")
+    contig2genes = defaultdict(list)
+    for gene in genes:
+        contig2genes[gene.contig].append(gene)
+    outfile = write_compress_or_not(output + ".gbff", compress)
+    for contig in contigs.keys():
+        outfile.write(f'LOCUS{" " * (12 - len("LOCUS"))}{contig}{" " * 4}{len(contigs[contig])} bp{" " * 4}DNA{" " * 4}linear{" " * 4}BCT{datetime.date.today().strftime("%d-%b-%Y").upper()}\n')
+        outfile.write("DEFINITION" + " " * (12 - len("DEFINITION"))+ contig + "\n")
+        outfile.write("VERSION"+ " " * (12 - len("VERSION")) + contig + ".1\n")
+        outfile.write("ACCESSION"+ " " * (12 - len("ACCESSION")) + contig + "\n")
+        outfile.write("KEYWORDS"+ " " * (12 - len("KEYWORDS")) + "." + "\n")
+        outfile.write("SOURCE" + " " * (12 - len("SOURCE")) + "unspecified\n")
+        outfile.write("COMMENT" + " " * (12 - len("COMMENT")) + "Annotated using " + 'synta' + pkg_resources.get_distribution("synta").version + "\n")
+        outfile.write("FEATURES" + " " * 13 + "Location/Qualifiers\n")
+        outfile.write(" " * 5 + "source" + " " * 10 + f"1..{len(contigs[contig])}\n")
+        outfile.write(' ' * 21 + '/mol_type="genomic DNA"\n')
+        outfile.write(' ' * 21 + '/organism="unspecified"\n')
+
+        for gene in contig2genes[contig]:
+            seq=None
+            if gene.type == "CDS":
+                if gene.strand == "+":
+                    seq = translate(contigs[contig][gene.start-1: gene.stop], code)
+                elif gene.strand == "-":
+                    seq = translate(reverse_complement(contigs[contig][gene.start-1: gene.stop]), code)
+            outfile.write(gene.mkGbkEntry(seq))
+
+        outfile.write("ORIGIN\n")
+        seqlen = 0
+        while seqlen < len(contigs[contig]):
+            outfile.write( ' ' * (9 - len(str(seqlen +1))) + str(seqlen +1))
+            for size in range(6):
+                outfile.write(' ' + contigs[contig][seqlen+10*size:seqlen+10*(size+1)].lower())
+            outfile.write("\n")
+            seqlen = seqlen + 60
+        outfile.write("//\n")
+    outfile.close()
+
+    logging.getLogger().debug("Done writing GBFF file.")
+
 def write_gff(output, contigs, genes, compress, versions):
     """
         Writes a gff formated file.
     """
-    logging.getLogger().debug("Writting GFF file ...")
+    logging.getLogger().debug("Writing GFF file ...")
     contig2genes = defaultdict(list)
     for gene in genes:
         contig2genes[gene.contig].append(gene)
@@ -477,9 +565,9 @@ def mk_basename(output, afile):
     if output[-1] != "/":
         outbasename += "/"
     if is_compressed(afile):
-        outbasename += "".join(os.path.basename(afile).split(".")[: -2])
+        outbasename += ".".join(os.path.basename(afile).split(".")[: -2])
     else:
-        outbasename += "".join(os.path.basename(afile).split(".")[: -1])
+        outbasename += ".".join(os.path.basename(afile).split(".")[: -1])
     return outbasename
 
 
@@ -720,7 +808,7 @@ def cmdLine():
     """
         Functions that defines the command line arguments.
     """
-    parser = argparse.ArgumentParser(description = "Quickly annotates CDS, rRNA and tRNA genes in prokaryote genomes", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser = argparse.ArgumentParser(description = "Quickly finds ORF, rRNA and tRNA genes in prokaryote genomes", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
 
     required = parser.add_argument_group(title = "Required arguments", description = "One of the following arguments is required :")
@@ -737,7 +825,7 @@ def cmdLine():
     outlog = parser.add_argument_group(title = "Output and formating")
     outlog.add_argument('--compress', required=False, action='store_true',default=False, help="Compress the output files using gzip.")
     outlog.add_argument('--output', required=False, type=str, default="synta_outputdir"+time.strftime("_DATE%Y-%m-%d_HOUR%H.%M.%S", time.localtime())+"_PID"+str(os.getpid()), help="Output directory path (optionnal)")
-    outlog.add_argument("--format", required=False, type=str.lower, default="gff", help="Different formats that you want as output, separated by a ','. Accepted strings are:  faa fna gff ffn.")
+    outlog.add_argument("--format", required=False, type=str.lower, default="gff", help="Different formats that you want as output, separated by a ','. Accepted strings are:  faa fna gff ffn gbff.")
     outlog.add_argument("--locustag", required=False, type=str, help="Locustag to use for feature ID. If not provided, it will use generic random string IDs of length 12.")
     outlog.add_argument("--basename", required=False, type=str, help="Basename to use for output files. If not provided, it will be guessed from the input file name.")
     outlog.add_argument("--log",required = False, action = "store_true", help = "Save log to file")
@@ -750,8 +838,6 @@ def cmdLine():
         parser.print_help()
         sys.exit(1)
 
-    if "argcomplete" in sys.modules:
-        argcomplete.autocomplete(parser)
     args = parser.parse_args()
 
     # if any of them is not none, it's good.
