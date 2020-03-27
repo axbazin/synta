@@ -13,11 +13,13 @@ on:
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
   # This workflow contains a single job called "build"
-  build:
+  test:
+    name: test synta for ${{ matrix.os }}
     # The type of runner that the job will run on
-    runs-on: ${{ os }}
+    runs-on: ${{ matrix.os }}
     strategy:
-      os: ['ubuntu-latest', 'macos-latest']
+      matrix:
+        os: ['ubuntu-latest', 'macos-latest']
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
     # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
