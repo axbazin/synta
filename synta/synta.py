@@ -241,7 +241,7 @@ def launch_prodigal(fnaFile, locustag, code):
     return geneObjs
 
 
-def launch_infernal(fnaFile, locustag, kingdom):
+def launch_infernal(fnaFile, locustag, kingdom, tmp):
     """
         launches Infernal in hmmer-only mode to annotate rRNAs. Takes a fna file name and a locustag to give an ID to the found genes.
         returns the annotated genes in a list of gene objects
@@ -252,7 +252,7 @@ def launch_infernal(fnaFile, locustag, kingdom):
         modelfile = os.path.dirname(os.path.realpath(__file__)) + "/rRNA_DB/rRNA_arch.cm"
 
     logging.getLogger().debug("Running Infernal(rRNA).")
-    tmpFile = tempfile.NamedTemporaryFile(mode="r", dir = "/dev/shm/")
+    tmpFile = tempfile.NamedTemporaryFile(mode="r", dir = tmp)
     cmd = ["cmscan", "--tblout", tmpFile.name, "--hmmonly", "--cpu",
            str(1), "--noali", modelfile, fnaFile]
     logging.getLogger().debug(f"command for Infernal:  '{' '.join(cmd)}'")
@@ -480,13 +480,13 @@ def write_fna(output, contigs, compress):
     outfile.close()
 
 
-def write_tmp_fasta(contigs):
+def write_tmp_fasta(contigs, tmp=tempfile.gettempdir()):
     """
         Writes a temporary fna formated file, and returns the file-like object.
 
         This is for the cases where the given file is compressed, then we write a temporary file for the annotation tools to read from. The file will be deleted when close() is called.
     """
-    tmpFile = tempfile.NamedTemporaryFile(mode="w", dir = "/dev/shm/")
+    tmpFile = tempfile.NamedTemporaryFile(mode="w", dir = tmp)
     for header in contigs.keys():
         tmpFile.write(f">{header}\n")
         logging.getLogger().debug(
@@ -499,7 +499,7 @@ def write_tmp_fasta(contigs):
     return tmpFile
 
 
-def syntaxic_annotation(fastaFile, cpu, norna, locustag, kingdom, code):
+def syntaxic_annotation(fastaFile, cpu, norna, locustag, kingdom, code, tmp):
     """
         Runs the different softwares for the syntaxic annotation.
 
@@ -522,7 +522,7 @@ def syntaxic_annotation(fastaFile, cpu, norna, locustag, kingdom, code):
                 func=launch_aragorn, args=(fastaFile.name, locustag))
             logging.getLogger().debug("Started the process launching Aragorn")
             infGenes = p.apply_async(
-                func=launch_infernal, args=(fastaFile.name, locustag, kingdom))
+                func=launch_infernal, args=(fastaFile.name, locustag, kingdom, tmp))
             logging.getLogger().debug("Started the process launching Infernal")
             genes.extend(araGenes.get())
             logging.getLogger().debug("Got the results from the process for Aragorn")
@@ -833,6 +833,7 @@ def cmdLine():
     misc.add_argument("--cpu", required=False, type=int, default=1, help="Number of cpus to use.")
     misc.add_argument("--verbose", required=False, action="store_true", default=False, help="show the DEBUG log")
     misc.add_argument('--version', action='version', version='%(prog)s ' + pkg_resources.get_distribution("synta").version)
+    misc.add_argument("--tmp", required=False, type=str, default=tempfile.gettempdir(), help = "directory for storing temporary files")
 
     if len(sys.argv) == 1:
         parser.print_help()
@@ -890,23 +891,23 @@ def main():
         logging.getLogger().info(
             "Reading the dna sequences and the gene informations from the gbff file.")
         gbffObjs, contigs = read_gbff(gbffFile)
-        fastaFile = write_tmp_fasta(contigs)
+        fastaFile = write_tmp_fasta(contigs, args.tmp)
     elif args.compare:# args.fna is not none
         logging.getLogger().info("Reading the gene informations from the gbff file.")
         gbffObjs, _ = read_gbff(gbffFile)
     elif args.fna is None:# there will be no comparisons.
         logging.getLogger().info("Reading the dna sequences from the gbff file.")
         _, contigs = read_gbff(gbffFile)
-        fastaFile = write_tmp_fasta(contigs)
+        fastaFile = write_tmp_fasta(contigs, args.tmp)
 
     if args.fna:
         logging.getLogger().info("Reading the dna sequences from the fna file.")
         fastaFile = read_compressed_or_not(args.fna)
         contigs = read_fasta(fastaFile)
         if is_compressed(args.fna):
-            fastaFile = write_tmp_fasta(contigs)
+            fastaFile = write_tmp_fasta(contigs, args.tmp)
 
-    genes = syntaxic_annotation(fastaFile, args.cpu, args.norna, args.locustag, args.kingdom, args.translation_table)
+    genes = syntaxic_annotation(fastaFile, args.cpu, args.norna, args.locustag, args.kingdom, args.translation_table, args.tmp)
     if args.overlap and not args.norna:
         # sorting and removing CDS that overlap.
         genes = overlap_filter(genes, contigs)
