@@ -28,12 +28,12 @@ jobs:
         python-version: 3.6
     # Runs a single command using the runners shell
     - name: Set up test environment
-    - shell: bash -l {0}
+      shell: bash -l {0}
       run: |
         conda install --file requirements.txt
         pip install .
     - name: Check install
-    - shell: bash -l {0}
+      shell: bash -l {0}
       run: |
         synta --version
         synta --help
